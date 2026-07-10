@@ -105,29 +105,41 @@ async function decodeImageFile(file) {
       return null;
     }
 
-    // 1) Sobre la imagen a resolución completa.
+    // 1) Sobre la imagen a resolución completa (caso normal, rápido).
     let val = await intentar(img);
     if (val) return val;
 
-    // 2) Reintento sobre canvas reducido a ≤1600px por lado (algunos detectores
-    //    fallan con fotos enormes; reducir mejora la tasa de lectura de 1D).
-    try {
-      const iw = img.naturalWidth || img.width;
-      const ih = img.naturalHeight || img.height;
-      const scale = Math.min(1, 1600 / Math.max(iw, ih, 1));
-      if (scale < 1) {
-        const w = Math.round(iw * scale);
-        const h = Math.round(ih * scale);
+    // 2) Reintentos ROTANDO la imagen (las fotos de etiquetas suelen salir de
+    //    lado y los códigos 1D se decodifican mucho peor girados) y reduciendo
+    //    a ≤1600px por lado. Se prueba 0/90/270/180°.
+    const iw = img.naturalWidth || img.width;
+    const ih = img.naturalHeight || img.height;
+    const MAX_LADO = 1600;
+
+    async function intentarAngulo(deg) {
+      try {
+        const swap = deg === 90 || deg === 270;
+        const srcW = swap ? ih : iw;
+        const srcH = swap ? iw : ih;
+        const scale = Math.min(1, MAX_LADO / Math.max(srcW, srcH, 1));
+        const w = Math.max(1, Math.round(srcW * scale));
+        const h = Math.max(1, Math.round(srcH * scale));
         const canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0, w, h);
-        val = await intentar(canvas);
-        if (val) return val;
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate((deg * Math.PI) / 180);
+        ctx.drawImage(img, (-iw * scale) / 2, (-ih * scale) / 2, iw * scale, ih * scale);
+        return await intentar(canvas);
+      } catch {
+        return null;
       }
-    } catch {
-      /* sin resultado */
+    }
+
+    for (const deg of [90, 270, 180, 0]) {
+      val = await intentarAngulo(deg);
+      if (val) return val;
     }
 
     // 3) Último recurso opcional: html5-qrcode scanFile.

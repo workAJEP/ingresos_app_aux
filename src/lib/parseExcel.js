@@ -21,7 +21,7 @@ import * as XLSX from 'xlsx';
 // Sinónimos por campo (ES / PT / EN). Se comparan en MAYÚSCULAS sin acentos.
 const SINONIMOS = {
   pieza: ['PIEZA', 'PECA', 'ITEM', 'SEQ', 'ORDEM'],
-  barcode: ['NUMERO', 'CODIGODEBARRA', 'CODIGOBARRA', 'BARCODE', 'BARRAS', 'ROLLO', 'ROLO', 'NRO', 'NUM'],
+  barcode: ['NUMERO', 'CODIGODEBARRA', 'CODIGOBARRA', 'BARCODE', 'BARRAS', 'ROLLO', 'ROLO', 'NRO', 'NUM', 'PECA', 'PIECE'],
   lote: ['LOTE', 'LOT'],
   metros: ['METRO', 'METRAGEM', 'MTS', 'MT'],
   yardas: ['YARDA', 'JARDA', 'YD'],
