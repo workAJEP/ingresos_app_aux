@@ -11,7 +11,9 @@ function isPublic(pathname) {
     pathname === '/icon-192.png' ||
     pathname === '/icon-512.png' ||
     pathname === '/apple-icon.png' ||
-    pathname.startsWith('/api/auth')
+    pathname.startsWith('/api/auth') ||
+    // El poller de la impresora se autentica con x-pull-token, no con sesión.
+    pathname === '/api/print/jobs'
   );
 }
 
