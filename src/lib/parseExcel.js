@@ -73,6 +73,19 @@ function esCodigo(v) {
   return /[A-Za-z0-9]{5,}/.test(s) && !/^\d{1,4}$/.test(s); // código alfanumérico, no un simple correlativo
 }
 
+// Barcode REAL de rollo: alfanumérico de 6-40, con al menos 4 dígitos. Descarta
+// encabezados repetidos ("NUMERO", "PIEZA") y textos de subtotal ("TOTAL") que
+// se repiten por sub-lote y falsearían el conteo de creados/duplicados.
+function esBarcode(v) {
+  const s = String(v == null ? '' : v)
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (s.length < 6 || s.length > 40) return false;
+  if (!/^[A-Z0-9\-]+$/.test(s)) return false;
+  return (s.match(/\d/g) || []).length >= 4;
+}
+
 function esNumerico(v) {
   if (v == null || v === '') return false;
   if (typeof v === 'number') return true;
@@ -117,9 +130,9 @@ function elegirColumnaDatos(muestras, hc, tipo, nCols) {
   let mejorFill = 0;
   for (let c = hc; c <= Math.min(hc + 10, nCols - 1); c++) {
     let ok = 0;
+    const test = tipo === 'num' ? esNumerico : tipo === 'bc' ? esBarcode : esCodigo;
     for (const fila of muestras) {
-      const v = fila[c];
-      if (tipo === 'num' ? esNumerico(v) : esCodigo(v)) ok++;
+      if (test(fila[c])) ok++;
     }
     const fill = muestras.length ? ok / muestras.length : 0;
     if (fill >= 0.5 && fill > mejorFill) {
@@ -210,21 +223,21 @@ export function parseExcel(buffer) {
   // algún código alfanumérico (candidato a barcode).
   const muestras = [];
   for (let i = headerIdx + 1; i < grid.length && muestras.length < 25; i++) {
-    if (grid[i].some((v) => esCodigo(v))) muestras.push(grid[i]);
+    if (grid[i].some((v) => esBarcode(v))) muestras.push(grid[i]);
   }
 
   // Mapea columna de DATOS por campo.
   const colDato = {};
   colDato.pieza = colEtiqueta.pieza != null ? colEtiqueta.pieza : 0;
   colDato.barcode =
-    colEtiqueta.barcode != null ? elegirColumnaDatos(muestras, colEtiqueta.barcode, 'cod', nCols) : -1;
+    colEtiqueta.barcode != null ? elegirColumnaDatos(muestras, colEtiqueta.barcode, 'bc', nCols) : -1;
   if (colDato.barcode < 0) {
-    // Fallback: la columna con más códigos alfanuméricos.
+    // Fallback: la columna con más barcodes reales (alfanuméricos con dígitos).
     let mejor = -1;
     let mejorN = 0;
     for (let c = 0; c < nCols; c++) {
       let n = 0;
-      for (const f of muestras) if (esCodigo(f[c])) n++;
+      for (const f of muestras) if (esBarcode(f[c])) n++;
       if (n > mejorN) {
         mejorN = n;
         mejor = c;
@@ -245,7 +258,7 @@ export function parseExcel(buffer) {
   const totalFilasCand = [];
   for (let i = headerIdx + 1; i < grid.length; i++) {
     const bc = normBarcode(grid[i][colDato.barcode]);
-    if (bc && esCodigo(bc)) totalFilasCand.push(grid[i]);
+    if (bc && esBarcode(bc)) totalFilasCand.push(grid[i]);
   }
 
   let descartadasSinBarcode = 0;

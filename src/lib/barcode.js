@@ -1,12 +1,11 @@
-// Normaliza un código de barras/QR leído (cámara, pistola USB o input manual).
+// Normaliza un código de barras/QR leído (cámara/foto, pistola USB o input
+// manual): UPPER + strip de espacios/controles; vacío o <7 caracteres -> error.
 //
-// Interfaz CONGELADA (§3 del plan) — la consumen tanto el backend (server-side,
-// vía fakeOdoo/rutas) como el frontend (validación antes de enviar el POST).
-// Sin dependencias externas: isomórfico, funciona igual en Node y en el
-// navegador. Reglas idénticas al GAS original (test.md): UPPER + strip de
-// espacios/controles; longitud >=10 recorta los últimos 2 caracteres (código
-// físico de la etiqueta trae 2 dígitos extra que NO forman parte del barcode
-// almacenado — ver lib/parseExcel.js, que NO recorta).
+// NO recorta caracteres: el código escaneado suele coincidir EXACTO con el
+// barcode del packing list (caso Vicunha: el NUMERO, p.ej. 1B10697899, es el
+// UID completo del rollo). El posible recorte de 2 dígitos extra de etiquetas
+// antiguas se maneja como FALLBACK en la búsqueda del servidor
+// (Odoo _lock_por_barcode / fakeOdoo), no aquí. Isomórfico, sin dependencias.
 export function normalizarBarcode(raw) {
   const cadena = String(raw == null ? '' : raw)
     .toUpperCase()
@@ -18,15 +17,6 @@ export function normalizarBarcode(raw) {
       codigo: '',
       extra: '',
       error: 'El código es muy corto. Verifica la lectura.',
-    };
-  }
-
-  if (cadena.length >= 10) {
-    return {
-      ok: true,
-      codigo: cadena.slice(0, -2),
-      extra: cadena.slice(-2),
-      error: null,
     };
   }
 
