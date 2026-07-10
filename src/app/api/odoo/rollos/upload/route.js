@@ -45,11 +45,14 @@ export async function POST(req) {
     const buffer = Buffer.from(await file.arrayBuffer());
     parsed = ext === '.pdf' ? await parsePdf(buffer) : parseExcel(buffer);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : '';
+    const msg = err instanceof Error ? err.message : String(err || '');
     console.error('[upload/parse]', msg || err);
     // Mensajes "de negocio" del parser (p.ej. PDF escaneado) van tal cual al usuario.
     if (msg && /escaneado|extra[íi]ble/i.test(msg)) return badRequest(msg);
-    return badRequest('No se pudo leer el archivo. Verifica que sea un packing list válido (.xlsx, .xls, .csv o .pdf).');
+    return badRequest(
+      'No se pudo leer el archivo. Verifica que sea un packing list válido (.xlsx, .xls, .csv o .pdf).' +
+        (msg ? ` [detalle técnico: ${msg.slice(0, 160)}]` : '')
+    );
   }
 
   const { rows, totalFilas, descartadasSinBarcode, duplicadasEnArchivo, meta } = parsed;
