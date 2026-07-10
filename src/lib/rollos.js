@@ -3,9 +3,55 @@
 // (dict de negocio) antes de devolverla a la ruta API — si Odoo/fakeOdoo
 // devuelven algo inesperado, se lanza para que la ruta lo traduzca a 503
 // (failOdoo) en vez de reenviar basura al frontend.
-import { odooKw, LOAD_TIMEOUT_MS } from './odoo';
+import { odooKw, odooSearchRead, LOAD_TIMEOUT_MS } from './odoo';
 
 const MODEL = 'distefano.importacion.rollo';
+
+// Lee un rollo por su barcode + los datos de su importación, y devuelve todos
+// los campos que necesita el sticker de ingreso. Devuelve null si no existe.
+export async function rolloParaSticker(barcode) {
+  const rollos = await odooSearchRead(
+    MODEL,
+    [['barcode', '=', barcode]],
+    ['id', 'barcode', 'pieza', 'cod_dist', 'nombre', 'color', 'composicion', 'peso_neto', 'metros', 'yardas', 'importacion_id'],
+    1,
+  );
+  const r = rollos[0];
+  if (!r) return null;
+
+  // Proveedor sale de la importación (partner_origen_id). El nombre viene en el
+  // par [id, nombre] que devuelve Odoo para los many2one.
+  const impId = Array.isArray(r.importacion_id) ? r.importacion_id[0] : r.importacion_id;
+  let proveedor = '';
+  let expediente = Array.isArray(r.importacion_id) ? r.importacion_id[1] : '';
+  if (impId) {
+    const imps = await odooSearchRead(
+      'distefano.importacion',
+      [['id', '=', impId]],
+      ['name', 'partner_origen_id'],
+      1,
+    );
+    if (imps[0]) {
+      expediente = imps[0].name || expediente;
+      proveedor = Array.isArray(imps[0].partner_origen_id) ? imps[0].partner_origen_id[1] : '';
+    }
+  }
+
+  return {
+    id: r.id,
+    barcode: r.barcode || '',
+    pieza: r.pieza || '',
+    codDist: r.cod_dist || '',
+    nombre: r.nombre || '',
+    color: r.color || '',
+    composicion: r.composicion || '',
+    pesoNeto: r.peso_neto || 0,
+    metros: r.metros || 0,
+    yardas: r.yardas || 0,
+    proveedor,
+    expediente,
+  };
+}
 const CHUNK_SIZE = 500;
 
 function assertShape(res, label) {
