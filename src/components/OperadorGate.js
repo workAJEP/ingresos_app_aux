@@ -11,12 +11,33 @@ export function useOperador() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    let guardado = '';
     try {
-      setOperadorState(window.localStorage.getItem(STORAGE_KEY) || '');
+      guardado = window.localStorage.getItem(STORAGE_KEY) || '';
     } catch {
       // localStorage no disponible; se continúa sin persistencia
     }
-    setReady(true);
+    if (guardado) {
+      setOperadorState(guardado);
+      setReady(true);
+      return;
+    }
+    // Sin operador guardado: precargar con el nombre del usuario logueado (Odoo).
+    // Sigue siendo editable (equipo compartido: alguien puede escanear con otro
+    // nombre) y solo se persiste cuando el usuario confirma en el modal.
+    let activo = true;
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (activo && data && data.name) setOperadorState(String(data.name));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (activo) setReady(true);
+      });
+    return () => {
+      activo = false;
+    };
   }, []);
 
   const setOperador = useCallback((nombre) => {

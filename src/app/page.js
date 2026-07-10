@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { PackagePlus, Truck, Warehouse, LayoutDashboard, Boxes, FileText } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { PackagePlus, Truck, Warehouse, LayoutDashboard, Boxes, FileText, LogOut } from 'lucide-react';
 import { apiFetch } from '@/components/useApi';
 import { useOperador } from '@/components/OperadorGate';
 
@@ -22,8 +23,19 @@ const ACCENTS = {
 };
 
 export default function HomePage() {
+  const router = useRouter();
   const { operador } = useOperador();
   const [salud, setSalud] = useState(null); // null=verificando, true=ok, false=caído
+
+  async function cerrarSesion() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // aunque falle la red, la sesión se invalida al re-loguear
+    }
+    router.push('/login');
+    router.refresh();
+  }
 
   useEffect(() => {
     let activo = true;
@@ -60,6 +72,14 @@ export default function HomePage() {
               {operador}
             </span>
           )}
+          <button
+            type="button"
+            onClick={cerrarSesion}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-800 bg-white border border-slate-200 rounded-full px-3 py-1.5 hover:bg-slate-50 transition-colors"
+          >
+            <LogOut className="w-4 h-4" aria-hidden="true" />
+            Cerrar sesión
+          </button>
         </div>
       </div>
 
