@@ -17,6 +17,7 @@ import {
 import OperadorGate, { useOperador } from '@/components/OperadorGate';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import ScanResultCard from '@/components/ScanResultCard';
+import PrintStickerButton from '@/components/PrintStickerButton';
 import ChecklistXena from '@/components/ChecklistXena';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { apiFetch } from '@/components/useApi';
@@ -214,6 +215,10 @@ function ScanContent() {
         <div ref={resultRef}>
           <ScanResultCard resultado={resultado} fase={fase} />
         </div>
+
+        {fase === 'ingreso' && resultado?.status === 'success' && resultado?.detalles?.codigo && (
+          <PrintStickerButton barcodes={[resultado.detalles.codigo]} />
+        )}
 
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
           {pila.length > 0 && (
