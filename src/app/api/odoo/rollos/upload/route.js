@@ -48,22 +48,23 @@ export async function POST(req) {
     return badRequest('No se pudo leer el archivo. Verifica que sea un Excel/CSV válido con el formato esperado.');
   }
 
-  const { rows, totalFilas, descartadasSinBarcode, duplicadasEnArchivo } = parsed;
+  const { rows, totalFilas, descartadasSinBarcode, duplicadasEnArchivo, meta } = parsed;
 
   if (!rows.length) {
     return respond({
       status: 'warning',
-      msg: 'El archivo no tiene filas válidas con código de barras.',
-      detalles: { creados: 0, yaExistentes: [], totalFilas, descartadasSinBarcode, duplicadasEnArchivo, totalRecibidas: 0 },
+      msg: 'No se reconocieron rollos con código de barras en el archivo. Verifica que sea el packing list correcto.',
+      detalles: { creados: 0, yaExistentes: [], totalFilas, descartadasSinBarcode, duplicadasEnArchivo, totalRecibidas: 0, meta },
     });
   }
 
   try {
     const { creados, yaExistentes, totalRecibidas } = await cargarRollos(importacionId, rows, operador);
+    const art = meta && meta.articulo ? ` · Artículo ${meta.articulo}` : '';
     return respond({
       status: 'success',
-      msg: `${creados} rollos creados. ${yaExistentes.length} ya existían.`,
-      detalles: { creados, yaExistentes, totalFilas, descartadasSinBarcode, duplicadasEnArchivo, totalRecibidas },
+      msg: `${creados} rollos creados. ${yaExistentes.length} ya existían.${art}`,
+      detalles: { creados, yaExistentes, totalFilas, descartadasSinBarcode, duplicadasEnArchivo, totalRecibidas, meta },
     });
   } catch (err) {
     return failOdoo(err);
