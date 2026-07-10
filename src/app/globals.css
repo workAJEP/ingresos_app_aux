@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes ic-flash-ok {
+    0% {
+      background-color: rgb(220 252 231);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  @keyframes ic-flash-err {
+    0% {
+      background-color: rgb(254 226 226);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  .ic-flash-ok {
+    animation: ic-flash-ok 300ms ease-out;
+  }
+
+  .ic-flash-err {
+    animation: ic-flash-err 300ms ease-out;
+  }
+}

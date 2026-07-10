@@ -1,0 +1,30 @@
+# dependencies
+/node_modules
+
+# next.js build output
+/.next/
+/out/
+
+# env files (real secrets — solo .env.example se versiona)
+.env
+.env.local
+.env*.local
+
+# HTTPS dev certificates (next dev --experimental-https)
+/certificates/
+*.pem
+*.key
+*.crt
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
