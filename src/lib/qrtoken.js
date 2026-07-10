@@ -53,3 +53,30 @@ export function verifyToken(token) {
     return null;
   }
 }
+
+// Un token nuestro tiene forma `<payloadB64url>.<firmaB64url>`: exactamente un
+// punto y ambos lados en el alfabeto base64url. Un barcode normal (p.ej.
+// "1B10697899") NO calza, así que sirve para distinguirlos.
+const TOKEN_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+export function pareceToken(s) {
+  return typeof s === 'string' && TOKEN_RE.test(s);
+}
+
+// Decodifica lo que escanea la cámara/pistola y devuelve SIEMPRE el código real
+// del bulto listo para buscar en Odoo:
+//   - Si es un QR firmado por nosotros -> verifica la firma y extrae `.b`
+//     (el código del bulto). Firma inválida -> { ok:false } (sticker falso o
+//     firmado con otro SESSION_SECRET).
+//   - Si es un barcode normal (sin forma de token) -> passthrough tal cual.
+// NO hace toUpperCase: rompería la firma base64url de un token.
+export function decodificarEscaneo(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return { ok: false, firmado: false, codigo: '', error: 'Lectura vacía.' };
+  if (!pareceToken(s)) return { ok: true, firmado: false, codigo: s };
+
+  const data = verifyToken(s);
+  if (!data || !data.b) {
+    return { ok: false, firmado: true, codigo: '', error: 'Sticker inválido o firmado con otra clave.' };
+  }
+  return { ok: true, firmado: true, codigo: String(data.b), envio: data.e ? String(data.e) : '' };
+}
