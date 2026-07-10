@@ -4,7 +4,8 @@
 //
 // Body: {
 //   rolloIds:  [<int>],      // ids de distefano.importacion.rollo, y/o
-//   barcodes:  ["T2741672"], // códigos de rollo
+//   barcodes:  ["T2741672"], // códigos de rollo, o
+//   importacionId: <int>,    // MASIVA: todos los rollos del expediente
 //   departamento: <string>,  // REQUERIDO: lo selecciona el usuario
 // }
 // proveedor se resuelve del expediente (partner_origen_id) de cada rollo.
@@ -35,21 +36,25 @@ export async function POST(req) {
   const barcodes = Array.isArray(body.barcodes)
     ? body.barcodes.map((b) => String(b || '').toUpperCase().replace(/[\r\n\t\s]+/g, '')).filter(Boolean)
     : [];
+  const importacionId = Number(body.importacionId) || 0;
+
   // Departamento: columna del sticker, la elige el usuario al imprimir.
   const departamento = String(body.departamento || '').trim();
   if (!departamento) return badRequest('departamento es requerido (lo selecciona el usuario).');
 
-  if (!rolloIds.length && !barcodes.length) {
-    return badRequest('Indica rolloIds y/o barcodes (al menos un rollo).');
+  if (!rolloIds.length && !barcodes.length && !importacionId) {
+    return badRequest('Indica rolloIds, barcodes o importacionId (al menos un rollo).');
   }
   if (rolloIds.length + barcodes.length > MAX_ROLLOS) {
     return badRequest(`Máximo ${MAX_ROLLOS} rollos por impresión.`);
   }
 
   try {
-    // Rollos desde Odoo (por id o barcode).
+    // Rollos desde Odoo: por expediente completo (masiva) o por id/barcode.
     const domain = [];
-    if (rolloIds.length && barcodes.length) {
+    if (importacionId) {
+      domain.push(['importacion_id', '=', importacionId]);
+    } else if (rolloIds.length && barcodes.length) {
       domain.push('|', ['id', 'in', rolloIds], ['barcode', 'in', barcodes]);
     } else if (rolloIds.length) {
       domain.push(['id', 'in', rolloIds]);

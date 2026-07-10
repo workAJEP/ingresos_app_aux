@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Boxes, PlusCircle, RefreshCw } from 'lucide-react';
 import UploadContenedor from '@/components/UploadContenedor';
+import PrintStickerButton from '@/components/PrintStickerButton';
 import Spinner from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorBanner from '@/components/ui/ErrorBanner';
@@ -118,6 +119,10 @@ function ExpedienteCard({ imp }) {
       <p className="text-xs text-slate-400">
         Total: <span className="font-semibold text-slate-600 tabular-nums">{total}</span> rollos
       </p>
+
+      {total > 0 && (
+        <PrintStickerButton importacionId={imp.id} count={total} label="Imprimir stickers" />
+      )}
     </div>
   );
 }

@@ -9,15 +9,17 @@ const LS_KEY = 'ic_departamento';
 const SUGERIDOS = ['PRODUCCION', 'BODEGA', 'CORTE', 'DHARMA'];
 
 /**
- * Botón "Imprimir sticker" para uno o varios rollos (por barcode).
- * El departamento lo elige el usuario (columna del sticker); se recuerda en
- * localStorage. POST /api/print/stickers → cola → poller BarTender.
+ * Botón "Imprimir sticker" para uno o varios rollos (por barcode) o para un
+ * expediente COMPLETO (importacionId → impresión masiva). El departamento lo
+ * elige el usuario (columna del sticker); se recuerda en localStorage.
+ * POST /api/print/stickers → cola → poller BarTender.
  */
-export default function PrintStickerButton({ barcodes, label = 'Imprimir sticker', className = '' }) {
+export default function PrintStickerButton({ barcodes, importacionId, count, label = 'Imprimir sticker', className = '' }) {
   const [departamento, setDepartamento] = useState('');
   const [editando, setEditando] = useState(false);
   const [borrador, setBorrador] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [confirmando, setConfirmando] = useState(false); // doble-clic en masiva
   const [msg, setMsg] = useState(null); // {ok, texto}
 
   useEffect(() => {
@@ -27,7 +29,8 @@ export default function PrintStickerButton({ barcodes, label = 'Imprimir sticker
   }, []);
 
   const codes = (barcodes || []).filter(Boolean);
-  if (!codes.length) return null;
+  if (!codes.length && !importacionId) return null;
+  const n = importacionId ? count || 0 : codes.length;
 
   const guardarDepartamento = () => {
     const d = borrador.trim().toUpperCase();
@@ -42,11 +45,19 @@ export default function PrintStickerButton({ barcodes, label = 'Imprimir sticker
       setEditando(true);
       return;
     }
+    // Masiva: confirmación por doble-clic (evita imprimir cientos por error).
+    if (importacionId && !confirmando) {
+      setConfirmando(true);
+      setTimeout(() => setConfirmando(false), 3000);
+      return;
+    }
+    setConfirmando(false);
     setEnviando(true);
     setMsg(null);
+    const body = importacionId ? { importacionId, departamento } : { barcodes: codes, departamento };
     const res = await apiFetch('/api/print/stickers', {
       method: 'POST',
-      body: { barcodes: codes, departamento },
+      body,
     });
     setEnviando(false);
     const ok = res.status === 'success';
@@ -61,11 +72,14 @@ export default function PrintStickerButton({ barcodes, label = 'Imprimir sticker
           type="button"
           onClick={imprimir}
           disabled={enviando}
-          className="flex items-center justify-center gap-1.5 min-h-[52px] w-full sm:w-auto px-4 bg-white border border-slate-200 text-blue-800 hover:bg-slate-50 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+          className={`flex items-center justify-center gap-1.5 min-h-[52px] w-full sm:w-auto px-4 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 ${
+            confirmando
+              ? 'bg-amber-50 border border-amber-200 text-amber-700'
+              : 'bg-white border border-slate-200 text-blue-800 hover:bg-slate-50'
+          }`}
         >
           {enviando ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Printer className="w-4 h-4" aria-hidden="true" />}
-          {label}
-          {codes.length > 1 ? ` (${codes.length})` : ''}
+          {confirmando ? `⚠️ Confirmar impresión${n ? ` (${n} etiquetas)` : ''}` : `${label}${n > 1 ? ` (${n})` : ''}`}
         </button>
 
         {departamento && !editando && (
