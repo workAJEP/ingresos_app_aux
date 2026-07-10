@@ -1,6 +1,7 @@
 // POST /api/odoo/rollos/upload — multipart: file + importacionId + operador.
 // parseExcel (packing list) -> cargar_rollos en chunks de 500.
 import { parseExcel } from '@/lib/parseExcel';
+import { parsePdf } from '@/lib/parsePdf';
 import { cargarRollos } from '@/lib/rollos';
 import { respond, badRequest, failOdoo } from '@/lib/http';
 
@@ -8,7 +9,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-const EXTENSIONES_PERMITIDAS = ['.xlsx', '.xls', '.csv'];
+const EXTENSIONES_PERMITIDAS = ['.xlsx', '.xls', '.csv', '.pdf'];
 
 export async function POST(req) {
   let form;
@@ -33,7 +34,7 @@ export async function POST(req) {
   const punto = nombre.lastIndexOf('.');
   const ext = punto >= 0 ? nombre.slice(punto).toLowerCase() : '';
   if (!EXTENSIONES_PERMITIDAS.includes(ext)) {
-    return badRequest('Formato no soportado. Usa .xlsx, .xls o .csv.');
+    return badRequest('Formato no soportado. Usa .xlsx, .xls, .csv o .pdf.');
   }
   if (file.size > MAX_SIZE_BYTES) {
     return badRequest('El archivo supera el límite de 10MB.');
@@ -42,10 +43,13 @@ export async function POST(req) {
   let parsed;
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    parsed = parseExcel(buffer);
+    parsed = ext === '.pdf' ? await parsePdf(buffer) : parseExcel(buffer);
   } catch (err) {
-    console.error('[upload/parseExcel]', err instanceof Error ? err.message : err);
-    return badRequest('No se pudo leer el archivo. Verifica que sea un Excel/CSV válido con el formato esperado.');
+    const msg = err instanceof Error ? err.message : '';
+    console.error('[upload/parse]', msg || err);
+    // Mensajes "de negocio" del parser (p.ej. PDF escaneado) van tal cual al usuario.
+    if (msg && /escaneado|extra[íi]ble/i.test(msg)) return badRequest(msg);
+    return badRequest('No se pudo leer el archivo. Verifica que sea un packing list válido (.xlsx, .xls, .csv o .pdf).');
   }
 
   const { rows, totalFilas, descartadasSinBarcode, duplicadasEnArchivo, meta } = parsed;

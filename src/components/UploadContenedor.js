@@ -6,7 +6,7 @@ import { apiFetch } from './useApi';
 import ImportacionPicker from './ImportacionPicker';
 import Spinner from './ui/Spinner';
 
-const ACCEPT = '.xlsx,.xls,.csv';
+const ACCEPT = '.xlsx,.xls,.csv,.pdf';
 
 /**
  * Modal de carga de contenedor: liga a expediente existente (ImportacionPicker)
@@ -209,7 +209,7 @@ export default function UploadContenedor({ open, onClose, operador, onUploaded }
                   <>
                     <UploadCloud className="w-6 h-6 text-blue-700" aria-hidden="true" />
                     <p className="text-sm text-slate-500">
-                      Arrastra el archivo aquí o haz clic para seleccionar (.xlsx, .xls, .csv)
+                      Arrastra el archivo aquí o haz clic para seleccionar (.xlsx, .xls, .csv, .pdf)
                     </p>
                   </>
                 )}
