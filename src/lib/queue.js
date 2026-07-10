@@ -9,6 +9,9 @@
 // con LTRIM como red de seguridad (que un bug no la infle sin límite).
 import { redis, pipeline, kvHost } from '@/lib/kv';
 
+// Re-export: las rutas de print lo importan desde aquí.
+export { queueEnabled } from '@/lib/kv';
+
 export const QUEUE_KEY = 'dd:print:jobs';
 const MAX_QUEUE = 500; // tope de seguridad
 const MAX_DRAIN = 100; // máx. trabajos que el poller baja por sondeo

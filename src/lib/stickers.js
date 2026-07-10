@@ -1,68 +1,65 @@
-// Formato de etiqueta y reglas de negocio de los stickers de bulto.
+// Formato de etiqueta de ROLLO (sticker) y serialización a CSV para BarTender.
 //
-// - buildStickerRows: aplica las reglas (copias, rollos, mixto) y firma el QR.
-// - toCSV: serializa las filas al CSV que consume BarTender / el poller.
-// - renderFallbackHTML: impresión de respaldo por navegador (el diseño real de
-//   producción vive en el .btw de BarTender; esto es solo un fallback).
-import { makeToken } from '@/lib/qrtoken';
+// Mapeo confirmado (fuente → campo del sticker):
+//   proveedor    ← importación partner_origen_id[1]
+//   composicion  ← rollo.composicion
+//   nombre       ← rollo.nombre (tela)
+//   codigo       ← rollo.barcode
+//   color        ← rollo.color
+//   conteo       ← "pieza / totalArticulo" del rollo dentro del expediente
+//   Roll No      ← rollo.barcode (= codigo)
+//   Net Weight   ← rollo.peso_neto
+//   Yards        ← rollo.yardas
+//   Departamento ← lo SELECCIONA EL USUARIO al imprimir (no es fijo)
+//
+// docs/poll-agent.py debe usar LAS MISMAS columnas (mismo orden y cabeceras).
 
-export const CSV_HEADER = 'token,bulto,marchamo,envio,destino,origen';
-export const MIN_COPIAS = 3;
-export const MAX_COPIAS = 20;
+// Columnas CONFIRMADAS del sticker, en este orden. `header` es el texto
+// LITERAL de la cabecera del CSV (así los mapea la plantilla .btw de
+// BarTender); `key` es el nombre del campo en las filas JSON.
+export const CSV_FIELDS = [
+  { key: 'proveedor', header: 'proveedor' },
+  { key: 'composicion', header: 'composicion' },
+  { key: 'nombre', header: 'nombre' },
+  { key: 'codigo', header: 'codigo' },
+  { key: 'color', header: 'color' },
+  { key: 'conteo', header: 'conteo' },
+  { key: 'rollno', header: 'Roll No' },
+  { key: 'netweight', header: 'Net Weight' },
+  { key: 'yards', header: 'Yards' },
+  { key: 'departamento', header: 'Departamento' },
+];
+export const CSV_HEADER = CSV_FIELDS.map((f) => f.header).join(',');
 
-// Normaliza el número de copias por bulto (mín 3, máx 20, default 3).
-export function normalizarCopias(copias) {
-  const n = Number.parseInt(copias, 10);
-  if (!Number.isFinite(n)) return MIN_COPIAS;
-  return Math.min(MAX_COPIAS, Math.max(MIN_COPIAS, n));
+function num2(v) {
+  const n = Number(v);
+  return isNaN(n) ? '0.00' : n.toFixed(2);
 }
 
-// Ubicaciones largas en cargas manuales: se resume al último tramo de "A/B/C".
-// "BODEGA/PASILLO 3/RACK 12" -> "RACK 12" (recortado a 24 chars).
-export function resumirUbicacion(ubi) {
-  if (!ubi) return '';
-  const tramo = String(ubi).split('/').pop().trim();
-  return tramo.slice(0, 24);
-}
-
-// Construye una fila de sticker (token firmado + campos del CSV).
-function fila(label, bulto) {
-  const destino = bulto.resumirDestino ? resumirUbicacion(bulto.destino) : bulto.destino || '';
+// Normaliza un rollo (registro Odoo `distefano.importacion.rollo`) a fila de
+// sticker. `proveedor` viene del expediente (partner_origen_id[1]);
+// `conteo` = "pieza / totalArticulo" (lo calcula el caller);
+// `departamento` lo SELECCIONA EL USUARIO al imprimir.
+// codigo y Roll No = barcode del rollo.
+export function filaRollo(rollo, { proveedor = '', conteo = '', departamento = '' } = {}) {
+  const barcode = String(rollo.barcode || '').trim();
   return {
-    token: makeToken({ b: label, e: bulto.envio || '' }),
-    bulto: label,
-    marchamo: bulto.marchamo || '',
-    envio: bulto.envio || '',
-    destino,
-    origen: bulto.origen || '',
+    proveedor,
+    composicion: rollo.composicion || '',
+    nombre: rollo.nombre || '',
+    codigo: barcode,
+    color: rollo.color || '',
+    conteo,
+    rollno: barcode,
+    netweight: num2(rollo.peso_neto),
+    yards: num2(rollo.yardas),
+    departamento,
   };
 }
 
-// Expande un bulto a sus filas de sticker según las reglas del runbook.
-//   bulto = { codigo, marchamo, envio, destino, origen,
-//             rollos: <int>, tieneNoRollo: <bool>, resumirDestino: <bool> }
-// Reglas:
-//   - Con rollos:   1 sticker por rollo -> `${codigo}/RL1`, `/RL2`, ...
-//                   + 1 sticker base (`codigo`) × copias si además lleva
-//                     material que no es rollo (bulto mixto).
-//   - Sin rollos:   1 sticker base (`codigo`) × copias.
-export function expandirBulto(bulto, copias = MIN_COPIAS) {
-  const c = normalizarCopias(copias);
-  const rollos = Number.parseInt(bulto.rollos, 10) || 0;
-  const rows = [];
-
-  if (rollos > 0) {
-    for (let i = 1; i <= rollos; i++) rows.push(fila(`${bulto.codigo}/RL${i}`, bulto));
-    if (bulto.tieneNoRollo) for (let k = 0; k < c; k++) rows.push(fila(bulto.codigo, bulto));
-  } else {
-    for (let k = 0; k < c; k++) rows.push(fila(bulto.codigo, bulto));
-  }
-  return rows;
-}
-
-// Arma todas las filas de una impresión (varios bultos).
-export function buildStickerRows(bultos, copias = MIN_COPIAS) {
-  return bultos.flatMap((b) => expandirBulto(b, copias));
+// Arma todas las filas de una impresión (1 etiqueta por rollo).
+export function buildRolloRows(rollos, ctx) {
+  return (rollos || []).map((r) => filaRollo(r, ctx));
 }
 
 // --- CSV ---------------------------------------------------------------
@@ -70,42 +67,38 @@ function csvCell(v) {
   const s = v == null ? '' : String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
-const CSV_COLS = ['token', 'bulto', 'marchamo', 'envio', 'destino', 'origen'];
 
 export function toCSV(rows) {
   const lines = [CSV_HEADER];
-  for (const r of rows) lines.push(CSV_COLS.map((c) => csvCell(r[c])).join(','));
+  for (const r of rows) lines.push(CSV_FIELDS.map((f) => csvCell(r[f.key])).join(','));
   return lines.join('\r\n');
 }
 
 // --- Fallback por navegador -------------------------------------------
-// Etiquetas 50×30 mm para imprimir desde el navegador si no hay BarTender.
-// NOTA: para un QR escaneable en el fallback hace falta generar la imagen del
-// QR en el cliente (p.ej. dep `qrcode`); aquí se imprime el token en texto.
-// La impresión real de producción la hace el .btw en BarTender.
+// Etiqueta 50×30 mm si no hay BarTender (el diseño real vive en el .btw).
 export function renderFallbackHTML(rows) {
   const etiquetas = rows
     .map(
       (r) => `
       <div class="sticker">
-        <div class="bulto">${r.bulto}</div>
-        <div class="meta">${r.envio || ''} · ${r.marchamo || ''}</div>
-        <div class="dest">${r.destino || ''}</div>
-        <div class="token">${r.token}</div>
+        <div class="id">${r.codigo}</div>
+        <div class="meta">${r.nombre}</div>
+        <div class="meta">${r.composicion}</div>
+        <div class="meta">${r.color} · ${r.conteo} · ${r.netweight} kg · ${r.yards} yds</div>
+        <div class="dep">${r.departamento} · ${r.proveedor}</div>
       </div>`,
     )
     .join('');
 
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Stickers</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title>
   <style>
     @page { size: 50mm 30mm; margin: 0; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Arial, sans-serif; }
     .sticker { width: 50mm; height: 30mm; padding: 2mm; page-break-after: always;
                display: flex; flex-direction: column; justify-content: space-between; }
-    .bulto { font-size: 14pt; font-weight: 700; }
-    .meta  { font-size: 8pt; }
-    .dest  { font-size: 9pt; font-weight: 600; }
-    .token { font-size: 5pt; word-break: break-all; color: #555; }
+    .id   { font-size: 13pt; font-weight: 700; font-family: monospace; }
+    .meta { font-size: 7.5pt; }
+    .dep  { font-size: 6.5pt; color: #555; }
   </style></head><body onload="print()">${etiquetas}</body></html>`;
 }
