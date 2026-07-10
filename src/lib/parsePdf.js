@@ -16,7 +16,16 @@ const TOL_X = 9; // pt: posiciones X a menos de esto = misma columna
 
 async function extraerFilasPdf(buffer) {
   // Build legacy = compatible con Node (server-side de Next).
-  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  // Importar el WORKER explícitamente y registrarlo en globalThis: en
+  // serverless (Vercel) pdfjs no puede resolver pdf.worker.mjs por ruta
+  // dinámica ("Setting up fake worker failed"); con globalThis.pdfjsWorker
+  // usa el módulo ya cargado sin tocar el filesystem.
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  if (!globalThis.pdfjsWorker) {
+    const worker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+    globalThis.pdfjsWorker = worker;
+  }
+  const { getDocument } = pdfjs;
   const doc = await getDocument({
     data: new Uint8Array(buffer),
     useSystemFonts: true,
