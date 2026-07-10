@@ -5,29 +5,178 @@ import { Camera, CameraOff, Flashlight, FlashlightOff, Loader2 } from 'lucide-re
 
 const SCAN_TTL_MS = 3000;
 const DEBOUNCE_MS = 1200;
-const READER_ID = 'ic-barcode-reader';
-const READER_ID_FILE = 'ic-barcode-reader-file';
 
-const FORMATS_TO_SUPPORT = (Html5QrcodeSupportedFormats) => [
-  Html5QrcodeSupportedFormats.QR_CODE,
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
-  Html5QrcodeSupportedFormats.ITF,
-  Html5QrcodeSupportedFormats.CODABAR,
+// Formatos 1D (+ QR por si acaso). El barcode del rollo es Code128/Code39
+// alfanumérico (ej. "1B10697899"); los demás se incluyen por robustez.
+const FORMATOS = [
+  'code_128',
+  'code_39',
+  'ean_13',
+  'ean_8',
+  'upc_a',
+  'upc_e',
+  'itf',
+  'codabar',
+  'qr_code',
 ];
+
+// Instancia un BarcodeDetector: nativo (Android/Chrome) si soporta FORMATOS,
+// o el ponyfill ZXing-WASM (iPhone/Safari). Devuelve un objeto con .detect() o null.
+async function crearDetector({ warm = false } = {}) {
+  // 1) Detector nativo.
+  if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+    try {
+      const soportados = window.BarcodeDetector.getSupportedFormats
+        ? await window.BarcodeDetector.getSupportedFormats()
+        : null;
+      const formats = soportados
+        ? FORMATOS.filter((f) => soportados.includes(f))
+        : FORMATOS;
+      if (formats.length) {
+        return new window.BarcodeDetector({ formats });
+      }
+    } catch {
+      /* siguiente método */
+    }
+  }
+  // 2) Ponyfill ZXing (WASM).
+  try {
+    const mod = await import('barcode-detector/ponyfill');
+    const det = new mod.BarcodeDetector({ formats: FORMATOS });
+    if (warm) {
+      // Pre-carga el WASM con un canvas 8×8 para que el primer escaneo ya sea rápido.
+      try {
+        const c = document.createElement('canvas');
+        c.width = 8;
+        c.height = 8;
+        await det.detect(c);
+      } catch {
+        /* ignore */
+      }
+    }
+    return det;
+  } catch {
+    return null;
+  }
+}
+
+// Decodifica un código 1D/QR desde una FOTO fija (método PRINCIPAL, más robusto
+// para 1D tipo Code128 que el escaneo en vivo). Pipeline: BarcodeDetector nativo
+// → ponyfill ZXing → reintento sobre un canvas reducido (≤1600px por lado).
+// NO usa jsQR (es solo QR). Devuelve el texto o null.
+async function decodeImageFile(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const im = new window.Image();
+      im.onload = () => resolve(im);
+      im.onerror = reject;
+      im.src = url;
+    });
+
+    async function intentar(target) {
+      // (a) Detector nativo.
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+        try {
+          const soportados = window.BarcodeDetector.getSupportedFormats
+            ? await window.BarcodeDetector.getSupportedFormats()
+            : null;
+          const formats = soportados
+            ? FORMATOS.filter((f) => soportados.includes(f))
+            : FORMATOS;
+          if (formats.length) {
+            const det = new window.BarcodeDetector({ formats });
+            const codes = await det.detect(target);
+            if (codes && codes.length) return codes[0].rawValue;
+          }
+        } catch {
+          /* siguiente método */
+        }
+      }
+      // (b) Ponyfill ZXing.
+      try {
+        const mod = await import('barcode-detector/ponyfill');
+        const det = new mod.BarcodeDetector({ formats: FORMATOS });
+        const codes = await det.detect(target);
+        if (codes && codes.length) return codes[0].rawValue;
+      } catch {
+        /* sin resultado */
+      }
+      return null;
+    }
+
+    // 1) Sobre la imagen a resolución completa.
+    let val = await intentar(img);
+    if (val) return val;
+
+    // 2) Reintento sobre canvas reducido a ≤1600px por lado (algunos detectores
+    //    fallan con fotos enormes; reducir mejora la tasa de lectura de 1D).
+    try {
+      const iw = img.naturalWidth || img.width;
+      const ih = img.naturalHeight || img.height;
+      const scale = Math.min(1, 1600 / Math.max(iw, ih, 1));
+      if (scale < 1) {
+        const w = Math.round(iw * scale);
+        const h = Math.round(ih * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, w, h);
+        val = await intentar(canvas);
+        if (val) return val;
+      }
+    } catch {
+      /* sin resultado */
+    }
+
+    // 3) Último recurso opcional: html5-qrcode scanFile.
+    try {
+      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+      const instance = new Html5Qrcode(READER_ID_FILE, {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.CODABAR,
+        ],
+        verbose: false,
+      });
+      try {
+        const decodedText = await instance.scanFile(file, false);
+        if (decodedText) return decodedText;
+      } finally {
+        try {
+          await instance.clear();
+        } catch {
+          /* nunca renderizó */
+        }
+      }
+    } catch {
+      /* sin resultado */
+    }
+
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+const READER_ID_FILE = 'ic-barcode-reader-file';
 
 /**
  * Escáner de códigos (1D + QR). Método PRINCIPAL: por foto (input file con
- * `capture="environment"` + `Html5Qrcode.scanFile`), más confiable para
- * códigos 1D en celular. Método secundario: stream de cámara en vivo vía
- * html5-qrcode (import dinámico, solo cliente), con retículo, torch y
- * cleanup. Anti-doble-escaneo compartido: caché Map código->timestamp
- * (3000ms) + debounce global (1200ms) + prop `disabled` mientras se procesa
- * una respuesta.
+ * `capture="environment"` + `decodeImageFile`, pipeline BarcodeDetector nativo →
+ * ponyfill ZXing-WASM), mucho más robusto para 1D tipo Code128 desde foto que
+ * el ZXing de html5-qrcode. Método secundario: stream de cámara en vivo vía
+ * `getUserMedia` + loop con BarcodeDetector, con retículo, torch y cleanup.
+ * Anti-doble-escaneo compartido: caché Map código->timestamp (3000ms) +
+ * debounce global (1200ms) + prop `disabled` mientras se procesa una respuesta.
  */
 export default function BarcodeScanner({ onDetected, disabled = false, className = '' }) {
   const [showLive, setShowLive] = useState(false);
@@ -40,8 +189,11 @@ export default function BarcodeScanner({ onDetected, disabled = false, className
   const [processingPhoto, setProcessingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState('');
 
-  const scannerRef = useRef(null);
-  const fileScannerRef = useRef(null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const detectorRef = useRef(null);
+  const loopTimerRef = useRef(null);
+  const stoppedRef = useRef(false);
   const fileInputRef = useRef(null);
   const cacheRef = useRef(new Map());
   const lastGlobalRef = useRef(0);
@@ -80,19 +232,26 @@ export default function BarcodeScanner({ onDetected, disabled = false, className
   );
 
   const detener = useCallback(async () => {
-    const instance = scannerRef.current;
-    scannerRef.current = null;
+    stoppedRef.current = true;
+    if (loopTimerRef.current) {
+      clearTimeout(loopTimerRef.current);
+      loopTimerRef.current = null;
+    }
+    detectorRef.current = null;
     setTorchOn(false);
     setTorchSupported(false);
-    if (!instance) {
-      setActive(false);
-      return;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     }
-    try {
-      await instance.stop();
-      await instance.clear();
-    } catch {
-      // ya estaba detenido
+    const video = videoRef.current;
+    if (video) {
+      try {
+        video.pause();
+      } catch {
+        /* ignore */
+      }
+      video.srcObject = null;
     }
     setActive(false);
   }, []);
@@ -101,52 +260,92 @@ export default function BarcodeScanner({ onDetected, disabled = false, className
     if (active || starting) return;
     setStarting(true);
     setError('');
+    stoppedRef.current = false;
+
     try {
-      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-      const instance = new Html5Qrcode(READER_ID, {
-        formatsToSupport: FORMATS_TO_SUPPORT(Html5QrcodeSupportedFormats),
-        verbose: false,
-      });
-      scannerRef.current = instance;
-
-      await instance.start(
-        { facingMode: 'environment' },
-        {
-          fps: 10,
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.7);
-            return { width: size, height: size };
-          },
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 2560 },
+          height: { ideal: 1440 },
+          frameRate: { ideal: 30 },
         },
-        (decodedText) => handleDecoded(decodedText),
-        () => {
-          /* frame sin lectura: silencioso */
-        }
-      );
+        audio: false,
+      });
+      if (stoppedRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      streamRef.current = stream;
 
+      const video = videoRef.current;
+      if (!video) {
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        return;
+      }
+      video.srcObject = stream;
+      await video.play();
       setActive(true);
 
+      // Capacidades: linterna y autofocus continuo (crítico para 1D).
+      const track = stream.getVideoTracks()[0];
+      const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+      if (caps && 'torch' in caps) setTorchSupported(true);
       try {
-        const caps = instance.getRunningTrackCapabilities?.();
-        setTorchSupported(!!caps?.torch);
+        if (caps && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+          await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+        }
       } catch {
-        setTorchSupported(false);
+        /* opcional */
       }
+
+      detectorRef.current = await crearDetector({ warm: true });
+      if (!detectorRef.current) {
+        setError('Este dispositivo no puede decodificar en vivo. Usa "Tomar foto del código".');
+        await detener();
+        return;
+      }
+
+      loop();
     } catch (err) {
       setError('No se pudo iniciar la cámara. Verifica los permisos del navegador.');
-      scannerRef.current = null;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
       setActive(false);
     } finally {
       setStarting(false);
     }
-  }, [active, starting, handleDecoded]);
+
+    async function loop() {
+      if (stoppedRef.current) return;
+      const video = videoRef.current;
+      const detector = detectorRef.current;
+      if (detector && video && video.readyState >= 2) {
+        try {
+          const codes = await detector.detect(video);
+          if (codes && codes.length) {
+            handleDecoded(codes[0].rawValue);
+          }
+        } catch {
+          /* seguir intentando */
+        }
+      }
+      if (!stoppedRef.current) {
+        loopTimerRef.current = setTimeout(loop, 100);
+      }
+    }
+  }, [active, starting, handleDecoded, detener]);
 
   const toggleTorch = useCallback(async () => {
-    const instance = scannerRef.current;
-    if (!instance) return;
+    const stream = streamRef.current;
+    if (!stream) return;
+    const track = stream.getVideoTracks()[0];
     const next = !torchOn;
     try {
-      await instance.applyVideoConstraints({ advanced: [{ torch: next }] });
+      await track.applyConstraints({ advanced: [{ torch: next }] });
       setTorchOn(next);
     } catch {
       setError('La linterna no está disponible en este dispositivo.');
@@ -177,56 +376,34 @@ export default function BarcodeScanner({ onDetected, disabled = false, className
       setPhotoError('');
       setProcessingPhoto(true);
 
-      // scanFile requiere que la instancia no esté escaneando en vivo.
-      if (scannerRef.current) {
-        await detener();
-      }
-
-      let instance = null;
       try {
-        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-        instance = new Html5Qrcode(READER_ID_FILE, {
-          formatsToSupport: FORMATS_TO_SUPPORT(Html5QrcodeSupportedFormats),
-          verbose: false,
-        });
-        fileScannerRef.current = instance;
-
-        const decodedText = await instance.scanFile(file, false);
-        const aceptado = handleDecoded(decodedText);
-        if (!aceptado) {
-          // Duplicado, debounce o `disabled`: no es un error de lectura.
-          setPhotoError('');
+        const decodedText = await decodeImageFile(file);
+        if (decodedText) {
+          handleDecoded(decodedText);
+        } else {
+          setPhotoError(
+            'No se pudo leer el código. Acércate, enfoca bien y toma la foto de nuevo. Consejo: usa la cámara en vivo si falla.'
+          );
         }
       } catch (err) {
-        setPhotoError('No se pudo leer el código. Acércate, enfoca bien y toma la foto de nuevo.');
+        setPhotoError(
+          'No se pudo leer el código. Acércate, enfoca bien y toma la foto de nuevo. Consejo: usa la cámara en vivo si falla.'
+        );
       } finally {
-        if (instance) {
-          try {
-            await instance.clear();
-          } catch {
-            // sin efecto si nunca renderizó
-          }
-        }
-        fileScannerRef.current = null;
         setProcessingPhoto(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     },
-    [detener, handleDecoded]
+    [handleDecoded]
   );
 
   useEffect(
     () => () => {
-      const instance = scannerRef.current;
-      if (instance) {
-        instance
-          .stop()
-          .then(() => instance.clear())
-          .catch(() => {});
-      }
-      const fileInstance = fileScannerRef.current;
-      if (fileInstance) {
-        fileInstance.clear().catch(() => {});
+      stoppedRef.current = true;
+      if (loopTimerRef.current) clearTimeout(loopTimerRef.current);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
       }
     },
     []
@@ -234,7 +411,7 @@ export default function BarcodeScanner({ onDetected, disabled = false, className
 
   return (
     <div className={`space-y-3 ${className}`}>
-      {/* Div oculto usado solo por scanFile (modo foto) */}
+      {/* Div oculto requerido por el fallback html5-qrcode scanFile */}
       <div id={READER_ID_FILE} className="hidden" />
 
       <input
@@ -260,7 +437,7 @@ export default function BarcodeScanner({ onDetected, disabled = false, className
         ) : (
           <>
             <Camera className="w-5 h-5" aria-hidden="true" />
-            Tomar foto del código
+            📷 Tomar foto del código
           </>
         )}
       </button>
@@ -285,7 +462,13 @@ export default function BarcodeScanner({ onDetected, disabled = false, className
               active ? 'block' : 'hidden'
             }`}
           >
-            <div id={READER_ID} className="w-full h-full [&_video]:w-full [&_video]:h-full [&_video]:object-cover" />
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              className="w-full h-full object-cover"
+            />
 
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center gap-3">
               <div className="w-[70%] aspect-[3/1] relative">
