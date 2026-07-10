@@ -91,10 +91,12 @@ function ScanContent() {
       }
       setErrorLocal('');
       setProcesando(true);
+      // Código YA FILTRADO por la app (Santista: sin los 2 dígitos de control
+      // finales; demás proveedores: completo) — ver lib/barcode.js.
       const codigoNormalizado = norm.codigo;
       const res = await apiFetch('/api/odoo/scan', {
         method: 'POST',
-        body: { barcode: crudo, fase, operador, source },
+        body: { barcode: codigoNormalizado, fase, operador, source },
       });
       setProcesando(false);
       setCodigo('');
