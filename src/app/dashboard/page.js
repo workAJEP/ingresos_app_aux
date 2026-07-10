@@ -75,7 +75,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white border border-slate-200 rounded-xl">
         <div>
           <h1 className="text-xl font-semibold text-blue-900 flex items-center gap-2">
@@ -84,7 +84,7 @@ export default function DashboardPage() {
           </h1>
           <p className="text-sm text-black mt-0.5">Inventario en vivo por expediente</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           <ImportacionPicker value={importacionId} onChange={setImportacionId} />
           <button
             type="button"
@@ -105,7 +105,7 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <StatCard icon={Warehouse} label="En bodega Z14" value={stats?.enBodegaZ14 ?? 0} accent="blue" />
             <StatCard icon={Truck} label="Enviados hoy" value={stats?.enviadosHoy ?? 0} accent="amber" />
             <StatCard icon={PackageCheck} label="Recibidos hoy Xena" value={stats?.recibidosHoyXena ?? 0} accent="green" />
@@ -115,19 +115,21 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-1 bg-white border border-slate-200 rounded-xl p-4">
               <p className="text-sm font-semibold text-blue-900 mb-2">Distribución por estado</p>
-              <DonutEstados
-                data={{
-                  bodega: conteoPorEstado.bodega ?? 0,
-                  transito: conteoPorEstado.transito ?? 0,
-                  recibido: conteoPorEstado.recibido ?? 0,
-                  pendiente: stats?.pendientes ?? 0,
-                }}
-              />
+              <div className="h-56 sm:h-64">
+                <DonutEstados
+                  data={{
+                    bodega: conteoPorEstado.bodega ?? 0,
+                    transito: conteoPorEstado.transito ?? 0,
+                    recibido: conteoPorEstado.recibido ?? 0,
+                    pendiente: stats?.pendientes ?? 0,
+                  }}
+                />
+              </div>
             </div>
 
             <div className="lg:col-span-2 bg-white rounded-lg border border-slate-200 overflow-hidden flex flex-col">
-              <div className="flex flex-wrap items-center gap-2 p-3 border-b border-slate-100">
-                <div className="relative flex-1 min-w-[180px]">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 p-3 border-b border-slate-100">
+                <div className="relative flex-1 min-w-0 sm:min-w-[180px]">
                   <Search className="w-3.5 h-3.5 text-blue-700 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
                   <input
                     value={busqueda}
@@ -139,7 +141,7 @@ export default function DashboardPage() {
                 <select
                   value={filtroEstado}
                   onChange={(e) => setFiltroEstado(e.target.value)}
-                  className="appearance-none bg-gray-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-blue-900 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                  className="w-full sm:w-auto appearance-none bg-gray-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-blue-900 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
                 >
                   <option value="">Todos los estados</option>
                   <option value="bodega">En bodega</option>
@@ -148,30 +150,30 @@ export default function DashboardPage() {
                 </select>
               </div>
 
-              <div className="overflow-auto max-h-[420px]">
+              <div className="overflow-x-auto overflow-y-auto max-h-[420px]">
                 {filas.length === 0 ? (
                   <EmptyState title="Sin resultados" description="No hay rollos que coincidan con el filtro." />
                 ) : (
-                  <table className="w-full text-sm text-left">
+                  <table className="w-full min-w-[560px] text-sm text-left">
                     <thead className="bg-white text-blue-700 border-b border-slate-200 sticky top-0">
                       <tr className="divide-x divide-slate-200">
-                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Código</th>
-                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Artículo</th>
-                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right">Mts</th>
-                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right">Yds</th>
-                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Estado</th>
+                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap">Código</th>
+                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap">Artículo</th>
+                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right whitespace-nowrap">Mts</th>
+                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right whitespace-nowrap">Yds</th>
+                        <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap">Estado</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filas.map((r) => (
                         <tr key={r.id} className="border-b border-slate-100 divide-x divide-slate-100 hover:bg-blue-50/40 transition-colors">
-                          <td className="px-4 py-2.5 font-mono tabular-nums text-blue-900">{r.codigo}</td>
-                          <td className="px-4 py-2.5 text-blue-900">
+                          <td className="px-4 py-2.5 font-mono tabular-nums text-blue-900 whitespace-nowrap">{r.codigo}</td>
+                          <td className="px-4 py-2.5 text-blue-900 whitespace-nowrap">
                             {r.nombre} <span className="text-slate-400">({r.codigoDist})</span>
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono tabular-nums text-blue-900">{r.metros}</td>
-                          <td className="px-4 py-2.5 text-right font-mono tabular-nums text-blue-900">{r.yardas}</td>
-                          <td className="px-4 py-2.5">
+                          <td className="px-4 py-2.5 text-right font-mono tabular-nums text-blue-900 whitespace-nowrap">{r.metros}</td>
+                          <td className="px-4 py-2.5 text-right font-mono tabular-nums text-blue-900 whitespace-nowrap">{r.yardas}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap">
                             <Badge estado={r.estado} />
                           </td>
                         </tr>

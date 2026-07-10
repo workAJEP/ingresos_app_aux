@@ -1,37 +1,45 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { FileText, Printer } from 'lucide-react';
 import Spinner from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
 import ErrorBanner from '@/components/ui/ErrorBanner';
+import ImportacionPicker from '@/components/ImportacionPicker';
 import { apiFetch } from '@/components/useApi';
 
-function hoyISO() {
-  const d = new Date();
-  const off = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - off * 60000);
-  return local.toISOString().slice(0, 10);
-}
+function ManifiestoContent() {
+  const searchParams = useSearchParams();
+  const initialId = searchParams.get('importacionId');
 
-export default function ManifiestoPage() {
-  const [fecha, setFecha] = useState(hoyISO());
+  const [importacionId, setImportacionId] = useState(initialId ? Number(initialId) : null);
   const [datos, setDatos] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [infoMsg, setInfoMsg] = useState('');
+  const [loading, setLoading] = useState(!!initialId);
   const [error, setError] = useState('');
 
   const cargar = useCallback(async () => {
+    if (!importacionId) {
+      setDatos(null);
+      setInfoMsg('');
+      return;
+    }
     setLoading(true);
     setError('');
-    const res = await apiFetch(`/api/odoo/manifest?fecha=${fecha}`);
+    setInfoMsg('');
+    const res = await apiFetch(`/api/odoo/manifest?importacionId=${importacionId}`);
     if (res.status === 'error') {
       setError(res.msg);
       setDatos(null);
+    } else if (res.status === 'info') {
+      setInfoMsg(res.msg || 'No hay rollos verificados para este expediente.');
+      setDatos(null);
     } else {
-      setDatos(res.detalles || { fecha, rows: [], totales: { peso: 0, metros: 0, yardas: 0, rollos: 0 } });
+      setDatos(res.detalles || null);
     }
     setLoading(false);
-  }, [fecha]);
+  }, [importacionId]);
 
   useEffect(() => {
     cargar();
@@ -39,6 +47,7 @@ export default function ManifiestoPage() {
 
   const filas = datos?.rows || [];
   const totales = datos?.totales || { peso: 0, metros: 0, yardas: 0, rollos: 0 };
+  const expedienteNombre = datos?.expediente;
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
@@ -46,17 +55,12 @@ export default function ManifiestoPage() {
         <div>
           <h1 className="text-xl font-semibold text-blue-900 flex items-center gap-2">
             <FileText className="w-[22px] h-[22px] text-blue-700" aria-hidden="true" />
-            Manifiesto de carga
+            Manifiesto de recepción{expedienteNombre ? ` — ${expedienteNombre}` : ''}
           </h1>
-          <p className="text-sm text-black mt-0.5">Ruta piloto por fecha de despacho</p>
+          <p className="text-sm text-black mt-0.5">Manifiesto por expediente (Ingreso Z14)</p>
         </div>
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-            className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-          />
+          <ImportacionPicker value={importacionId} onChange={setImportacionId} allowAll={false} />
           <button
             type="button"
             onClick={() => window.print()}
@@ -71,19 +75,27 @@ export default function ManifiestoPage() {
 
       {error && <ErrorBanner message={error} onRetry={cargar} className="no-print" />}
 
-      {loading ? (
+      {!importacionId ? (
+        <div className="no-print">
+          <EmptyState title="Selecciona un expediente" description="Elige un expediente para ver su manifiesto de recepción." />
+        </div>
+      ) : loading ? (
         <div className="no-print flex justify-center py-16">
           <Spinner size="lg" />
         </div>
+      ) : infoMsg ? (
+        <div className="no-print">
+          <EmptyState title="Sin rollos verificados" description={infoMsg} />
+        </div>
       ) : filas.length === 0 ? (
         <div className="no-print">
-          <EmptyState title="Sin rollos en tránsito" description="No hay rollos cargados en tránsito ese día." />
+          <EmptyState title="Sin rollos verificados" description="No hay rollos verificados para este expediente." />
         </div>
       ) : (
         <div className="space-y-4">
           <div className="text-center hidden print:block">
-            <h2 className="text-lg font-bold text-black">MANIFIESTO DE CARGA — RUTA PILOTO</h2>
-            <p className="text-sm text-black">Fecha de emisión: {fecha}</p>
+            <h2 className="text-lg font-bold text-black">MANIFIESTO DE RECEPCIÓN</h2>
+            {expedienteNombre && <p className="text-sm text-black">Expediente: {expedienteNombre}</p>}
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
@@ -95,10 +107,10 @@ export default function ManifiestoPage() {
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Nombre</th>
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Color</th>
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Composición</th>
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Número (ID)</th>
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right">Peso Neto (kg)</th>
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right">Cant. Metros</th>
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right">Cant. Yardas</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider">Número mono</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right">Peso kg</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right">Mts</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-right">Yds</th>
                 </tr>
               </thead>
               <tbody>
@@ -128,11 +140,19 @@ export default function ManifiestoPage() {
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 inline-flex items-center gap-2">
-            <span className="text-sm text-slate-500">Total de bultos/rollos:</span>
+            <span className="text-sm text-slate-500">Total de rollos:</span>
             <span className="text-lg font-bold text-blue-900 tabular-nums">{totales.rollos}</span>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+export default function ManifiestoPage() {
+  return (
+    <Suspense fallback={<div className="max-w-3xl mx-auto px-4 py-10 text-center text-sm text-slate-400">Cargando…</div>}>
+      <ManifiestoContent />
+    </Suspense>
   );
 }

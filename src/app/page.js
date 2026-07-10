@@ -3,17 +3,15 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { PackagePlus, Truck, Warehouse, LayoutDashboard, Boxes, FileText, LogOut } from 'lucide-react';
+import { PackagePlus, LayoutDashboard, Boxes, FileText, LogOut } from 'lucide-react';
 import { apiFetch } from '@/components/useApi';
 import { useOperador } from '@/components/OperadorGate';
 
 const TARJETAS = [
   { href: '/scan?fase=ingreso', icon: PackagePlus, titulo: 'Ingreso Z14', descripcion: 'Registrar llegada a bodega', accent: 'blue' },
-  { href: '/scan?fase=piloto', icon: Truck, titulo: 'Piloto', descripcion: 'Carga hacia Xena Coj', accent: 'amber' },
-  { href: '/scan?fase=xena', icon: Warehouse, titulo: 'Recepción Xena', descripcion: 'Descarga en bodega Xena', accent: 'green' },
-  { href: '/dashboard', icon: LayoutDashboard, titulo: 'Dashboard', descripcion: 'Inventario en vivo', accent: 'blue' },
   { href: '/contenedores', icon: Boxes, titulo: 'Contenedores', descripcion: 'Expedientes y carga de packing list', accent: 'blue' },
-  { href: '/manifiesto', icon: FileText, titulo: 'Manifiesto', descripcion: 'Manifiesto de carga diario', accent: 'blue' },
+  { href: '/dashboard', icon: LayoutDashboard, titulo: 'Dashboard', descripcion: 'Inventario en vivo', accent: 'blue' },
+  { href: '/manifiesto', icon: FileText, titulo: 'Manifiesto', descripcion: 'Manifiesto por expediente', accent: 'blue' },
 ];
 
 const ACCENTS = {

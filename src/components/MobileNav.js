@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { Home, PackagePlus, Truck, Warehouse, LayoutDashboard } from 'lucide-react';
+import { Home, PackagePlus, Boxes, FileText, LayoutDashboard } from 'lucide-react';
 
 const ITEMS = [
   { href: '/', match: (p) => p === '/', icon: Home, label: 'Inicio' },
@@ -13,18 +13,8 @@ const ITEMS = [
     icon: PackagePlus,
     label: 'Ingreso',
   },
-  {
-    href: '/scan?fase=piloto',
-    match: (p, fase) => p === '/scan' && fase === 'piloto',
-    icon: Truck,
-    label: 'Piloto',
-  },
-  {
-    href: '/scan?fase=xena',
-    match: (p, fase) => p === '/scan' && fase === 'xena',
-    icon: Warehouse,
-    label: 'Xena',
-  },
+  { href: '/contenedores', match: (p) => p === '/contenedores', icon: Boxes, label: 'Conten.' },
+  { href: '/manifiesto', match: (p) => p === '/manifiesto', icon: FileText, label: 'Manif.' },
   { href: '/dashboard', match: (p) => p === '/dashboard', icon: LayoutDashboard, label: 'Panel' },
 ];
 

@@ -216,6 +216,21 @@ function ScanContent() {
           <ScanResultCard resultado={resultado} fase={fase} />
         </div>
 
+        {fase === 'ingreso' && resultado?.status === 'success' && resultado?.detalles?.globalFaltan === 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+            <p className="text-sm font-semibold text-green-800">
+              🎉 ¡Contenedor completo! Todos los rollos fueron recibidos.
+            </p>
+            <Link
+              href="/manifiesto"
+              className="flex items-center justify-center gap-1.5 min-h-[44px] px-4 bg-blue-800 hover:bg-blue-900 text-white text-sm font-semibold rounded-lg transition-colors shrink-0"
+            >
+              <FileText className="w-4 h-4" aria-hidden="true" />
+              Generar manifiesto
+            </Link>
+          </div>
+        )}
+
         {fase === 'ingreso' && resultado?.status === 'success' && resultado?.detalles?.codigo && (
           <PrintStickerButton barcodes={[resultado.detalles.codigo]} />
         )}

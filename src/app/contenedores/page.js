@@ -121,7 +121,11 @@ function ExpedienteCard({ imp }) {
       </p>
 
       {total > 0 && (
-        <PrintStickerButton importacionId={imp.id} count={total} label="Imprimir stickers" />
+        <PrintStickerButton
+          chooser
+          importacionId={imp.id}
+          count={total - (imp.rollosPendientes || 0)}
+        />
       )}
     </div>
   );

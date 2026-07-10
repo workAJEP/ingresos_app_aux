@@ -51,7 +51,9 @@ export async function POST(req) {
 
   try {
     // Rollos desde Odoo: por expediente completo (masiva) o por id/barcode.
-    const domain = [];
+    // SOLO rollos VERIFICADOS (ya escaneados: estado != pendiente) — no se
+    // imprimen stickers de rollos que aún no pasaron por el ingreso físico.
+    const domain = [['estado', '!=', 'pendiente']];
     if (importacionId) {
       domain.push(['importacion_id', '=', importacionId]);
     } else if (rolloIds.length && barcodes.length) {
@@ -68,7 +70,11 @@ export async function POST(req) {
       MAX_ROLLOS,
     );
     if (!rollos.length) {
-      return respond({ status: 'error', msg: 'No se encontraron rollos con esos ids/códigos.', detalles: null });
+      return respond({
+        status: 'warning',
+        msg: 'No hay rollos VERIFICADOS para imprimir (solo se imprimen los ya escaneados en el ingreso).',
+        detalles: null,
+      });
     }
 
     // proveedor por expediente: partner_origen_id[1] de cada importación.
