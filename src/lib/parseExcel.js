@@ -24,7 +24,7 @@ import * as XLSX from 'xlsx';
 // MAYÚSCULAS sin acentos ni separadores.
 const SINONIMOS = {
   pieza: ['SEQPACK', 'SEQ', 'PIEZA', 'PECA', 'ITEM', 'ORDEM'],
-  barcode: ['NUMERO', 'PIECENUMBER', 'CODIGODEBARRA', 'CODIGOBARRA', 'BARCODE', 'BARRAS', 'PECA', 'PIECE', 'ROLLO', 'ROLO', 'NRO', 'NUM'],
+  barcode: ['NUMERO', 'PIECENUMBER', 'CODIGODEBARRA', 'CODIGOBARRA', 'BARCODE', 'BARRAS', 'PECA', 'PIECE', 'ROLLNO', 'ROLLO', 'ROLO', 'NRO', 'NUM'],
   // `nombre` = ARTÍCULO del proveedor (JD100M / la descripción de la tela).
   // `cod_dist` = código interno Distefano (TTD-xxxx): NO viene en el packing
   // list del proveedor -> lo completa el usuario en la app (editor de
@@ -32,10 +32,14 @@ const SINONIMOS = {
   nombre: ['ARTICLE', 'ARTIGO', 'ARTICULO', 'DESCRIPCION', 'DESCRICAO', 'NOMBRE', 'TEJIDO'],
   color: ['COLOR', 'COR'],
   lote: ['LOTE', 'LOT'],
-  metros: ['METRO', 'METRAGEM', 'MTS', 'QUANTITY', 'QTDE', 'CANTIDAD'],
+  metros: ['METRO', 'METRAGEM', 'MTS', 'MTR', 'QUANTITY', 'QTDE', 'CANTIDAD'],
   yardas: ['YARDA', 'JARDA', 'YD'],
-  peso_neto: ['NETO', 'LIQUIDO', 'NET'],
+  peso_neto: ['PESONETO', 'NETWEIGHT', 'NETO', 'LIQUIDO', 'NET'],
 };
+
+// Etiquetas del membrete que identifican al PROVEEDOR (el dato va en la celda
+// siguiente de la misma fila, o en la fila de abajo).
+const PROVEEDOR_LABELS = ['VENDEDOR', 'PROVEEDOR', 'SHIPPER', 'SELLER', 'EXPORTADOR', 'EXPORTER', 'VENDOR', 'SUPPLIER'];
 
 const YARDAS_POR_METRO = 1.09361;
 
@@ -97,24 +101,43 @@ function esNumerico(v) {
   return /\d/.test(String(v)) && parseNum(v) > 0;
 }
 
-// Fila de cabecera = la de mayor cantidad de campos distintos reconocidos,
-// dentro de las primeras 60 filas.
-function detectarCabecera(rows) {
-  let best = -1;
-  let idx = 0;
+// Puntaje de "parecido a cabecera" de una fila: cuántos campos distintos
+// reconoce entre sus celdas.
+function scoreCabecera(fila) {
+  const textos = fila.map(norm);
+  let score = 0;
+  for (const claves of Object.values(SINONIMOS)) {
+    if (textos.some((t) => t && claves.some((k) => t.includes(k)))) score++;
+  }
+  return score;
+}
+
+// TODAS las filas de cabecera del documento. Muchos packing lists (Vicunha
+// FC/PL) traen VARIOS ARTÍCULOS en un mismo archivo, cada uno con su propio
+// membrete (Descripcion/Color) y su propia tabla con cabecera repetida — cada
+// cabecera abre una SECCIÓN. Se toma la mejor fila de las primeras 60 como
+// referencia y luego toda fila con puntaje comparable (>= max(3, best-1)) en
+// el resto del archivo; se saltan las filas pegadas a una cabecera ya elegida
+// (segunda/tercera línea de una cabecera multi-fila).
+function detectarCabeceras(rows) {
+  let best = 0;
+  let bestIdx = 0;
   const limite = Math.min(rows.length, 60);
   for (let i = 0; i < limite; i++) {
-    const textos = rows[i].map(norm);
-    let score = 0;
-    for (const claves of Object.values(SINONIMOS)) {
-      if (textos.some((t) => t && claves.some((k) => t.includes(k)))) score++;
-    }
-    if (score > best) {
-      best = score;
-      idx = i;
+    const s = scoreCabecera(rows[i]);
+    if (s > best) {
+      best = s;
+      bestIdx = i;
     }
   }
-  return { idx, score: best };
+  const umbral = Math.max(3, best - 1);
+  const idxs = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (idxs.length && i - idxs[idxs.length - 1] <= 3) continue;
+    if (scoreCabecera(rows[i]) >= umbral) idxs.push(i);
+  }
+  if (!idxs.length) idxs.push(bestIdx);
+  return { idxs, score: best };
 }
 
 // Texto de cabecera combinado por columna (fila cabecera ± vecinas) — junta
@@ -175,28 +198,50 @@ function buscarEtiqueta(cab, claves) {
   return null;
 }
 
-// Extrae metadatos del membrete (aplican a todo el archivo cuando el layout no
-// trae esas columnas por fila).
-function extraerMeta(rows, headerIdx) {
+// ¿La fila parece continuación de una descripción multi-línea? ("COLORES",
+// "DE DISTINTOS COLORES", "SARGA 3X1-Z, TENIDO"): texto sin ':' que no sea
+// una etiqueta de membrete ni una cabecera de tabla.
+function esContinuacionDescripcion(s) {
+  if (!s || s.includes(':') || s.length > 80) return false;
+  const u = sinAcentos(s).toUpperCase();
+  // "COLORES" sí es continuación válida ("HILADOS DE DISTINTOS / COLORES");
+  // las etiquetas "Color:" ya quedan fuera por el ':' de arriba.
+  if (/^(DESCRIPCION|DESCRICAO|ARTIGO|ARTICULO|CALIDAD|PEDIDO|EMBALAJE|LOTE|TOTAL)/.test(u)) return false;
+  return /^[A-Z0-9 ,.%\-/()]+$/.test(u) && /[A-Z]{3,}/.test(u);
+}
+
+// Extrae metadatos del membrete de una ZONA [desde, hasta) del archivo:
+// artículo/descripción (multi-línea), color y composición. Cada sección de un
+// packing multi-artículo tiene su propia zona; si el layout no trae esas
+// columnas por fila, estos valores aplican a todos los rollos de la sección.
+function extraerMeta(rows, desde, hasta) {
   let descripcion = '';
   let color = '';
   let ref = '';
-  const limite = Math.min(headerIdx, 60);
-  for (let i = 0; i < limite; i++) {
+  const ini = Math.max(0, desde);
+  const fin = Math.min(hasta, rows.length);
+  for (let i = ini; i < fin; i++) {
     for (const cell of rows[i]) {
       const s = String(cell || '').trim();
       if (!s) continue;
       const u = sinAcentos(s).toUpperCase();
       if (!color) {
-        const m = s.match(/(?:COR|COLOR)\s*:?\s*([A-Za-z0-9\-]+)/i);
-        if (m && u.startsWith('COR')) color = m[1];
+        const m = s.match(/(?:COLOR|COR|TONO)\s*[:.]?\s*([A-Za-z0-9\-]{2,})/i);
+        if (m && /^(COLOR|COR|TONO)\b/.test(u.replace(/[:.]/, ' '))) color = m[1];
       }
       if (!descripcion) {
         if (/^DESCRIPCION|^DESCRICAO|^ARTIGO|^ARTICULO/.test(u) && s.length < 20) {
-          for (let j = i + 1; j < Math.min(i + 4, limite); j++) {
+          for (let j = i + 1; j < Math.min(i + 4, fin); j++) {
             const v = String(rows[j][0] || rows[j].find((x) => String(x).trim()) || '').trim();
             if (v) {
               descripcion = v;
+              // Continuación en la(s) fila(s) siguiente(s): "…HILADOS DE
+              // DISTINTOS" + "COLORES" van partidos en dos filas.
+              for (let k = j + 1; k < Math.min(j + 3, fin); k++) {
+                const cont = String(rows[k][0] || rows[k].find((x) => String(x).trim()) || '').trim();
+                if (!esContinuacionDescripcion(cont)) break;
+                descripcion += ' ' + cont;
+              }
               break;
             }
           }
@@ -216,6 +261,28 @@ function extraerMeta(rows, headerIdx) {
   return { descripcion, color, ref, composicion };
 }
 
+// Proveedor desde el membrete inicial: la celda siguiente a la etiqueta
+// (Vendedor | VICUNHA ECUADOR S.A.) o, si no hay, la fila de abajo en la
+// misma columna.
+function extraerProveedor(rows, hasta) {
+  const fin = Math.min(hasta, rows.length, 40);
+  for (let i = 0; i < fin; i++) {
+    for (let c = 0; c < rows[i].length; c++) {
+      const u = norm(rows[i][c]);
+      if (!u || !PROVEEDOR_LABELS.some((k) => u === k || u.startsWith(k))) continue;
+      for (let cc = c + 1; cc < rows[i].length; cc++) {
+        const v = String(rows[i][cc] || '').trim();
+        if (v && /[A-Za-z]{3,}/.test(v)) return v;
+      }
+      if (i + 1 < rows.length) {
+        const v = String(rows[i + 1][c] || '').trim();
+        if (v && /[A-Za-z]{3,}/.test(v)) return v;
+      }
+    }
+  }
+  return '';
+}
+
 function truncar(s, n) {
   s = String(s == null ? '' : s).trim();
   return s.length > n ? s.slice(0, n) : s;
@@ -226,13 +293,10 @@ function truncar(s, n) {
  * celdas string/number) y devuelve { rows, totalFilas, descartadasSinBarcode,
  * duplicadasEnArchivo, meta }. La usan parseExcel (XLSX/CSV) y parsePdf.
  */
-export function parseGrid(grid) {
-  const nCols = grid.reduce((m, r) => Math.max(m, r.length), 0);
-  const { idx: headerIdx } = detectarCabecera(grid);
+// Mapeo de columnas (etiqueta -> columna de datos) para una sección: cabecera
+// en headerIdx, datos hasta `fin` (exclusivo).
+function mapearColumnas(grid, headerIdx, fin, nCols) {
   const cab = textoCabecera(grid, headerIdx, nCols);
-  const meta = extraerMeta(grid, headerIdx);
-
-  // Columna de la etiqueta por campo (prioridad por sinónimo).
   const colEtiqueta = {};
   for (const [campo, claves] of Object.entries(SINONIMOS)) {
     const c = buscarEtiqueta(cab, claves);
@@ -241,11 +305,10 @@ export function parseGrid(grid) {
 
   // Filas de muestra para validar tipos.
   const muestras = [];
-  for (let i = headerIdx + 1; i < grid.length && muestras.length < 30; i++) {
+  for (let i = headerIdx + 1; i < fin && muestras.length < 30; i++) {
     if (grid[i].some((v) => esBarcode(v))) muestras.push(grid[i]);
   }
 
-  // Columna de DATOS por campo.
   const colDato = {};
   colDato.cod_dist = -1; // TTD-xxxx: lo completa el usuario, no viene en el archivo
   colDato.pieza = colEtiqueta.pieza != null ? elegirColumnaDatos(muestras, colEtiqueta.pieza, 'cod', nCols) : -1;
@@ -279,68 +342,91 @@ export function parseGrid(grid) {
   for (const campo of ['color', 'nombre', 'pieza', 'lote']) {
     if (colDato[campo] === colDato.barcode) colDato[campo] = campo === 'pieza' ? 0 : -1;
   }
+  return colDato;
+}
 
-  // Filas de datos: las que tienen barcode válido en la columna detectada
-  // (salta membretes, cabeceras repetidas por página y subtotales).
-  const filasDatos = [];
-  for (let i = headerIdx + 1; i < grid.length; i++) {
-    const bc = normBarcode(grid[i][colDato.barcode]);
-    if (bc && esBarcode(bc)) filasDatos.push(grid[i]);
-  }
+export function parseGrid(grid) {
+  const nCols = grid.reduce((m, r) => Math.max(m, r.length), 0);
 
+  // SECCIONES: cada cabecera de tabla abre una (packing multi-artículo). El
+  // membrete de la sección k va entre la cabecera anterior y la suya.
+  const { idxs: headerIdxs } = detectarCabeceras(grid);
+  const proveedor = extraerProveedor(grid, headerIdxs[0]);
+
+  let totalFilas = 0;
   let descartadasSinBarcode = 0;
   let duplicadasEnArchivo = 0;
   const vistos = new Set();
   const rows = [];
+  const articulos = [];
+  let metaPrev = null; // meta heredada: cabecera repetida por página SIN membrete nuevo
 
-  for (const fila of filasDatos) {
-    const barcode = normBarcode(fila[colDato.barcode]);
-    if (!barcode) {
-      descartadasSinBarcode++;
-      continue;
+  for (let k = 0; k < headerIdxs.length; k++) {
+    const headerIdx = headerIdxs[k];
+    const fin = k + 1 < headerIdxs.length ? headerIdxs[k + 1] : grid.length;
+    const desdeMembrete = k === 0 ? 0 : headerIdxs[k - 1] + 1;
+
+    let meta = extraerMeta(grid, desdeMembrete, headerIdx);
+    // Sin membrete propio (cabecera repetida por paginación): heredar el de
+    // la sección anterior.
+    if (!meta.descripcion && !meta.color && metaPrev) meta = metaPrev;
+    metaPrev = meta;
+    if (meta.ref && !articulos.includes(meta.ref)) articulos.push(meta.ref);
+
+    const colDato = mapearColumnas(grid, headerIdx, fin, nCols);
+    if (colDato.barcode < 0) continue;
+
+    for (let i = headerIdx + 1; i < fin; i++) {
+      const barcode = normBarcode(grid[i][colDato.barcode]);
+      if (!barcode || !esBarcode(barcode)) continue;
+      const fila = grid[i];
+      totalFilas++;
+      if (vistos.has(barcode)) {
+        duplicadasEnArchivo++;
+        continue;
+      }
+      vistos.add(barcode);
+
+      const metros = colDato.metros >= 0 ? parseNum(fila[colDato.metros]) : 0;
+      // Yards: si el packing list NO trae columna de yardas, se usa la cantidad
+      // TAL CUAL (sin convertir) — así lo maneja el negocio (docs/Recepcion MP.xlsx:
+      // Quantity 100.60 del packing list se imprime como Yards 100.60).
+      let yardas = colDato.yardas >= 0 ? parseNum(fila[colDato.yardas]) : 0;
+      if (!yardas && metros) yardas = metros;
+
+      const colorFila = colDato.color >= 0 ? String(fila[colDato.color] || '').trim() : '';
+      const codDistFila = colDato.cod_dist >= 0 ? String(fila[colDato.cod_dist] || '').trim() : '';
+      const nombreFila = colDato.nombre >= 0 ? String(fila[colDato.nombre] || '').trim() : '';
+
+      rows.push({
+        pieza: truncar(fila[colDato.pieza], 64),
+        cod_dist: truncar(codDistFila, 64),
+        nombre: truncar(nombreFila || meta.descripcion || meta.ref, 128),
+        color: truncar(colorFila || meta.color, 64),
+        composicion: truncar(meta.composicion, 128),
+        barcode,
+        peso_neto: colDato.peso_neto >= 0 ? parseNum(fila[colDato.peso_neto]) : 0,
+        metros,
+        yardas,
+      });
     }
-    if (vistos.has(barcode)) {
-      duplicadasEnArchivo++;
-      continue;
-    }
-    vistos.add(barcode);
-
-    const metros = colDato.metros >= 0 ? parseNum(fila[colDato.metros]) : 0;
-    // Yards: si el packing list NO trae columna de yardas, se usa la cantidad
-    // TAL CUAL (sin convertir) — así lo maneja el negocio (docs/Recepcion MP.xlsx:
-    // Quantity 100.60 del packing list se imprime como Yards 100.60).
-    let yardas = colDato.yardas >= 0 ? parseNum(fila[colDato.yardas]) : 0;
-    if (!yardas && metros) yardas = metros;
-
-    const colorFila = colDato.color >= 0 ? String(fila[colDato.color] || '').trim() : '';
-    const codDistFila = colDato.cod_dist >= 0 ? String(fila[colDato.cod_dist] || '').trim() : '';
-    const nombreFila = colDato.nombre >= 0 ? String(fila[colDato.nombre] || '').trim() : '';
-
-    rows.push({
-      pieza: truncar(fila[colDato.pieza], 64),
-      cod_dist: truncar(codDistFila, 64),
-      nombre: truncar(nombreFila || meta.descripcion || meta.ref, 128),
-      color: truncar(colorFila || meta.color, 64),
-      composicion: truncar(meta.composicion, 128),
-      barcode,
-      peso_neto: colDato.peso_neto >= 0 ? parseNum(fila[colDato.peso_neto]) : 0,
-      metros,
-      yardas,
-    });
   }
 
+  const metaPrimera = extraerMeta(grid, 0, headerIdxs[0]);
   return {
     rows,
-    totalFilas: filasDatos.length,
+    totalFilas,
     descartadasSinBarcode,
     duplicadasEnArchivo,
     meta: {
-      articulo: meta.ref,
-      descripcion: meta.descripcion,
-      color: meta.color,
-      composicion: meta.composicion,
-      columnasDetectadas: colDato,
-      filaCabecera: headerIdx,
+      articulo: articulos.join(', ') || metaPrimera.ref,
+      descripcion: metaPrimera.descripcion,
+      color: metaPrimera.color,
+      composicion: metaPrimera.composicion,
+      proveedor,
+      secciones: headerIdxs.length,
+      columnasDetectadas: mapearColumnas(grid, headerIdxs[0], headerIdxs[1] || grid.length, nCols),
+      filaCabecera: headerIdxs[0],
     },
   };
 }
