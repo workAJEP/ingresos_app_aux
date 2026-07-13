@@ -25,8 +25,11 @@ import * as XLSX from 'xlsx';
 const SINONIMOS = {
   pieza: ['SEQPACK', 'SEQ', 'PIEZA', 'PECA', 'ITEM', 'ORDEM'],
   barcode: ['NUMERO', 'PIECENUMBER', 'CODIGODEBARRA', 'CODIGOBARRA', 'BARCODE', 'BARRAS', 'PECA', 'PIECE', 'ROLLO', 'ROLO', 'NRO', 'NUM'],
-  cod_dist: ['ARTICLE', 'ARTIGO', 'ARTICULO', 'REFERENCIA', 'REF'],
-  nombre: ['DESCRIPCION', 'DESCRICAO', 'NOMBRE', 'TEJIDO', 'STYLE', 'ESTILO'],
+  // `nombre` = ARTÍCULO del proveedor (JD100M / la descripción de la tela).
+  // `cod_dist` = código interno Distefano (TTD-xxxx): NO viene en el packing
+  // list del proveedor -> lo completa el usuario en la app (editor de
+  // artículos), igual que el color legible y la composición.
+  nombre: ['ARTICLE', 'ARTIGO', 'ARTICULO', 'DESCRIPCION', 'DESCRICAO', 'NOMBRE', 'TEJIDO'],
   color: ['COLOR', 'COR'],
   lote: ['LOTE', 'LOT'],
   metros: ['METRO', 'METRAGEM', 'MTS', 'QUANTITY', 'QTDE', 'CANTIDAD'],
@@ -244,6 +247,7 @@ export function parseGrid(grid) {
 
   // Columna de DATOS por campo.
   const colDato = {};
+  colDato.cod_dist = -1; // TTD-xxxx: lo completa el usuario, no viene en el archivo
   colDato.pieza = colEtiqueta.pieza != null ? elegirColumnaDatos(muestras, colEtiqueta.pieza, 'cod', nCols) : -1;
   if (colDato.pieza < 0 && colEtiqueta.pieza != null) colDato.pieza = colEtiqueta.pieza;
   if (colDato.pieza < 0) colDato.pieza = 0;
@@ -268,11 +272,11 @@ export function parseGrid(grid) {
   for (const campo of ['metros', 'yardas', 'peso_neto']) {
     colDato[campo] = colEtiqueta[campo] != null ? elegirColumnaDatos(muestras, colEtiqueta[campo], 'num', nCols) : -1;
   }
-  for (const campo of ['lote', 'cod_dist', 'color', 'nombre']) {
+  for (const campo of ['lote', 'color', 'nombre']) {
     colDato[campo] = colEtiqueta[campo] != null ? elegirColumnaDatos(muestras, colEtiqueta[campo], 'cod', nCols) : -1;
   }
-  // color/cod_dist/nombre por fila no deben ser la misma columna que el barcode.
-  for (const campo of ['cod_dist', 'color', 'nombre', 'pieza', 'lote']) {
+  // color/nombre por fila no deben ser la misma columna que el barcode.
+  for (const campo of ['color', 'nombre', 'pieza', 'lote']) {
     if (colDato[campo] === colDato.barcode) colDato[campo] = campo === 'pieza' ? 0 : -1;
   }
 
@@ -302,8 +306,11 @@ export function parseGrid(grid) {
     vistos.add(barcode);
 
     const metros = colDato.metros >= 0 ? parseNum(fila[colDato.metros]) : 0;
+    // Yards: si el packing list NO trae columna de yardas, se usa la cantidad
+    // TAL CUAL (sin convertir) — así lo maneja el negocio (docs/Recepcion MP.xlsx:
+    // Quantity 100.60 del packing list se imprime como Yards 100.60).
     let yardas = colDato.yardas >= 0 ? parseNum(fila[colDato.yardas]) : 0;
-    if (!yardas && metros) yardas = Math.round(metros * YARDAS_POR_METRO * 100) / 100;
+    if (!yardas && metros) yardas = metros;
 
     const colorFila = colDato.color >= 0 ? String(fila[colDato.color] || '').trim() : '';
     const codDistFila = colDato.cod_dist >= 0 ? String(fila[colDato.cod_dist] || '').trim() : '';

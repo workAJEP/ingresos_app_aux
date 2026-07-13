@@ -14,52 +14,73 @@
 //
 // docs/poll-agent.py debe usar LAS MISMAS columnas (mismo orden y cabeceras).
 
-// Columnas CONFIRMADAS del sticker, en este orden. `header` es el texto
-// LITERAL de la cabecera del CSV (así los mapea la plantilla .btw de
-// BarTender); `key` es el nombre del campo en las filas JSON.
+// Columnas del CSV temporal de impresión, EXACTAS y en el orden de
+// `docs/Recepcion MP.xlsx` (Hoja1 = encabezados). `header` es el texto LITERAL
+// que mapea la plantilla .btw de BarTender; `key` es el campo en las filas JSON.
 export const CSV_FIELDS = [
-  { key: 'proveedor', header: 'proveedor' },
-  { key: 'composicion', header: 'composicion' },
-  { key: 'nombre', header: 'nombre' },
-  { key: 'codigo', header: 'codigo' },
-  { key: 'color', header: 'color' },
-  { key: 'conteo', header: 'conteo' },
+  { key: 'hoja', header: 'Hoja' },
+  { key: 'proveedor', header: 'Proveedor' },
+  { key: 'composicion', header: 'Composición' },
+  { key: 'nombre', header: 'Nombre' },
+  { key: 'codigo', header: 'Código' },
+  { key: 'color', header: 'Color' },
+  { key: 'conteo', header: 'Conteo' },
   { key: 'rollno', header: 'Roll No' },
   { key: 'netweight', header: 'Net Weight' },
   { key: 'yards', header: 'Yards' },
   { key: 'departamento', header: 'Departamento' },
+  { key: 'idunico', header: 'ID Unico' },
+  { key: 'rollonum', header: 'Rollo #' },
 ];
 export const CSV_HEADER = CSV_FIELDS.map((f) => f.header).join(',');
 
-function num2(v) {
+function num(v, dec) {
   const n = Number(v);
-  return isNaN(n) ? '0.00' : n.toFixed(2);
+  return isNaN(n) ? (0).toFixed(dec) : n.toFixed(dec);
 }
+// Net Weight con 3 decimales y Yards con 2, como en docs/Recepcion MP.xlsx
+// (ej. 52.497 kg / 100.60 yds).
+const numPeso = (v) => num(v, 3);
+const numYardas = (v) => num(v, 2);
 
 // Normaliza un rollo (registro Odoo `distefano.importacion.rollo`) a fila de
-// sticker. `proveedor` viene del expediente (partner_origen_id[1]);
-// `conteo` = "pieza / totalArticulo" (lo calcula el caller);
-// `departamento` lo SELECCIONA EL USUARIO al imprimir.
-// codigo y Roll No = barcode del rollo.
-export function filaRollo(rollo, { proveedor = '', conteo = '', departamento = '' } = {}) {
+// sticker, con el mapeo de `docs/Recepcion MP.xlsx`:
+//   Hoja        correlativo dentro de la impresión (1..N)
+//   Proveedor   partner_origen_id del expediente
+//   Composición rollo.composicion
+//   Nombre      rollo.nombre (tela / artículo del proveedor)
+//   Código      rollo.cod_dist (código del artículo)
+//   Color       rollo.color
+//   Conteo      "pieza / totalArticulo" (lo calcula el caller)
+//   Roll No     rollo.barcode
+//   Net Weight  rollo.peso_neto
+//   Yards       rollo.yardas
+//   Departamento  LO ESTABLECE EL USUARIO al imprimir
+//   ID Unico    rollo.barcode (el valor escaneable, igual que Roll No)
+//   Rollo #     rollo.id de Odoo (1:1 con la fila del packing list)
+export function filaRollo(rollo, { proveedor = '', conteo = '', departamento = '', hoja = '' } = {}) {
   const barcode = String(rollo.barcode || '').trim();
   return {
+    hoja: String(hoja || ''),
     proveedor,
     composicion: rollo.composicion || '',
     nombre: rollo.nombre || '',
-    codigo: barcode,
+    codigo: rollo.cod_dist || '',
     color: rollo.color || '',
     conteo,
     rollno: barcode,
-    netweight: num2(rollo.peso_neto),
-    yards: num2(rollo.yardas),
+    netweight: numPeso(rollo.peso_neto),
+    yards: numYardas(rollo.yardas),
     departamento,
+    idunico: barcode,
+    rollonum: String(rollo.id || ''),
   };
 }
 
-// Arma todas las filas de una impresión (1 etiqueta por rollo).
+// Arma todas las filas de una impresión (1 etiqueta por rollo). `hoja` es el
+// correlativo dentro del lote impreso.
 export function buildRolloRows(rollos, ctx) {
-  return (rollos || []).map((r) => filaRollo(r, ctx));
+  return (rollos || []).map((r, i) => filaRollo(r, { ...ctx, hoja: i + 1 }));
 }
 
 // --- CSV ---------------------------------------------------------------

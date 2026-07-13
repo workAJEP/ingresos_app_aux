@@ -13,7 +13,7 @@ import { getIronSession } from 'iron-session';
 import { cookies } from 'next/headers';
 import { sessionOptions } from '@/lib/session';
 import { respond, badRequest, fail, failOdoo } from '@/lib/http';
-import { buildRolloRows } from '@/lib/stickers';
+import { filaRollo } from '@/lib/stickers';
 import { odooSearchRead } from '@/lib/odoo';
 import { enqueueJob, queueEnabled } from '@/lib/queue';
 
@@ -96,28 +96,41 @@ export async function POST(req) {
       }
     }
 
-    // conteo = "pieza / totalArticulo": total de rollos del mismo cod_dist en
-    // el mismo expediente (una consulta por par expediente+artículo).
-    const totalPorArt = {};
+    // Conteo = "n/total" NUMÉRICO dentro del artículo (nombre = artículo del
+    // proveedor) en el mismo expediente: ej. "1/10", "2/10"… Se calcula con
+    // todos los rollos del artículo ordenados por id (posición estable).
+    const ordenPorArt = {}; // clave -> [ids ordenados]
     for (const r of rollos) {
       const impId = Array.isArray(r.importacion_id) ? r.importacion_id[0] : r.importacion_id;
-      const clave = `${impId}|${r.cod_dist || ''}`;
-      if (!(clave in totalPorArt)) {
+      const clave = `${impId}|${r.nombre || ''}|${r.color || ''}`;
+      if (!(clave in ordenPorArt)) {
         const delArt = await odooSearchRead(
           'distefano.importacion.rollo',
-          [['importacion_id', '=', impId], ['cod_dist', '=', r.cod_dist || '']],
+          [
+            ['importacion_id', '=', impId],
+            ['nombre', '=', r.nombre || ''],
+            ['color', '=', r.color || ''],
+          ],
           ['id'],
           2000,
+          0,
+          'id asc',
         );
-        totalPorArt[clave] = delArt.length;
+        ordenPorArt[clave] = delArt.map((x) => x.id);
       }
     }
 
-    const rows = rollos.map((r) => {
+    const rows = rollos.map((r, i) => {
       const impId = Array.isArray(r.importacion_id) ? r.importacion_id[0] : r.importacion_id;
-      const total = totalPorArt[`${impId}|${r.cod_dist || ''}`] || 0;
-      const conteo = r.pieza ? `${r.pieza} / ${total}` : `${total}`;
-      return buildRolloRows([r], { proveedor: proveedorPorImp[impId] || '', conteo, departamento })[0];
+      const ids = ordenPorArt[`${impId}|${r.nombre || ''}|${r.color || ''}`] || [];
+      const pos = ids.indexOf(r.id) + 1;
+      const conteo = ids.length ? `${pos || 1}/${ids.length}` : '';
+      return filaRollo(r, {
+        proveedor: proveedorPorImp[impId] || '',
+        conteo,
+        departamento,
+        hoja: i + 1, // correlativo dentro del lote impreso
+      });
     });
 
     // Solo informativo: barcodes pedidos que no existen.

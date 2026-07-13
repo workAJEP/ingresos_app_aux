@@ -14,13 +14,21 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # --- Configuración (viene de poll-agent.bat) ---------------------------
-$ApiUrl     = $env:API_URL
+# -replace '"','' : si el .bat puso la ruta entre comillas, `set` las incluye
+# en el valor y la ruta deja de resolver. Se limpian aquí.
+$ApiUrl     = ($env:API_URL -replace '"', '')
 $PullToken  = $env:PULL_TOKEN
-$OutDir     = if ($env:OUT_DIR) { $env:OUT_DIR } else { 'C:\BarTenderIn' }
-$BtwPath    = $env:BTW_PATH
-$BartendExe = $env:BARTEND_EXE
+$OutDir     = if ($env:OUT_DIR) { $env:OUT_DIR -replace '"', '' } else { 'C:\BarTenderIn' }
+$BtwPath    = ($env:BTW_PATH -replace '"', '')
+$BartendExe = ($env:BARTEND_EXE -replace '"', '')
 $Printer    = $env:PRINTER
 $Interval   = if ($env:INTERVAL) { [int]$env:INTERVAL } else { 3 }
+
+# BARTEND_EXE debe ser el .exe REAL (un acceso directo .lnk no es ejecutable).
+if ($BtwPath -and $BartendExe -and $BartendExe.ToLower().EndsWith('.lnk')) {
+  Write-Error "BARTEND_EXE apunta a un acceso directo (.lnk): $BartendExe`nDebe ser el bartend.exe real."
+  exit 1
+}
 
 if (-not $ApiUrl)    { Write-Error 'Falta API_URL en poll-agent.bat'; exit 1 }
 if (-not $PullToken) { Write-Error 'Falta PULL_TOKEN en poll-agent.bat'; exit 1 }
@@ -28,7 +36,12 @@ if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Forc
 
 $JobsUrl = "$($ApiUrl.TrimEnd('/'))/api/print/jobs"
 $Headers = @{ 'x-pull-token' = $PullToken }
-$Cols    = @('token', 'bulto', 'marchamo', 'envio', 'destino', 'origen')
+# Columnas del CSV = las de docs/Recepcion MP.xlsx (y CSV_FIELDS de
+# src/lib/stickers.js). HeaderCols = texto literal de la cabecera (lo mapea el
+# .btw de BarTender); KeyCols = campo en las filas JSON del job.
+# Departamento lo establece el USUARIO al imprimir.
+$HeaderCols = @('Hoja', 'Proveedor', 'Composición', 'Nombre', 'Código', 'Color', 'Conteo', 'Roll No', 'Net Weight', 'Yards', 'Departamento', 'ID Unico', 'Rollo #')
+$KeyCols    = @('hoja', 'proveedor', 'composicion', 'nombre', 'codigo', 'color', 'conteo', 'rollno', 'netweight', 'yards', 'departamento', 'idunico', 'rollonum')
 
 Write-Host "[poller] sondeo cada $Interval s -> $JobsUrl"
 Write-Host "[poller] salida CSV: $OutDir"
@@ -47,9 +60,9 @@ function Format-Cell($v) {
 # un archivo a medias.
 function Write-CsvFile($rows, $path) {
   $sb = New-Object System.Text.StringBuilder
-  [void]$sb.AppendLine(($Cols -join ','))
+  [void]$sb.AppendLine(($HeaderCols -join ','))
   foreach ($r in $rows) {
-    $line = ($Cols | ForEach-Object { Format-Cell $r.$_ }) -join ','
+    $line = ($KeyCols | ForEach-Object { Format-Cell $r.$_ }) -join ','
     [void]$sb.AppendLine($line)
   }
   $tmp = "$path.tmp"
@@ -62,7 +75,8 @@ function Write-CsvFile($rows, $path) {
 $seq = 0
 while ($true) {
   try {
-    $resp = Invoke-RestMethod -Uri $JobsUrl -Headers $Headers -Method Get -TimeoutSec 20
+    # POST a propósito: evita el cacheo de GET del CDN de Vercel (reimpresiones).
+    $resp = Invoke-RestMethod -Uri $JobsUrl -Headers $Headers -Method Post -Body '{}' -ContentType 'application/json' -TimeoutSec 20
     $jobs = @($resp.jobs)
     foreach ($job in $jobs) {
       $rows = @($job.rows)
