@@ -23,7 +23,25 @@ const MIN_CHARS = 1;
 // con un código (algo con dígitos), un porcentaje o una palabra clave de
 // especificación (Ancho, Peso, Color, Estilo…). Si no queda nada, se
 // devuelve el nombre completo.
-const CORTE_NOMBRE = /^(ancho|peso|color|estilo|ref|rollos?|titulo|título|sarga|tejido|gms?|gsm|oz|yds?|mts?)\.?,?$/i;
+const CORTE_NOMBRE =
+  /^(ancho|peso|color|estilo|ref|rollos?|titulo|título|sarga|tejido|gms?|gsm|grs?|oz|onzas?|yds?|mts?|cms?|mms?|pulg(adas?)?|denier|calibre|comp(osici[oó]n)?|ligamento|acabado)\.?,?$/i;
+// Cotas del nombre corto: la etiqueta es chica — si la extracción se pasa de
+// largo (nombres tipo "Tela Jersey Slub Rayado Listado Especial …"), se recorta
+// por PALABRAS completas (sin cortar a media palabra).
+const NOMBRE_MAX_PALABRAS = 4;
+const NOMBRE_MAX_LARGO = 30;
+
+function recortarPorPalabras(palabras) {
+  const out = [];
+  for (const w of palabras) {
+    if (out.length >= NOMBRE_MAX_PALABRAS) break;
+    const largo = out.join(' ').length + (out.length ? 1 : 0) + w.length;
+    if (largo > NOMBRE_MAX_LARGO) break;
+    out.push(w);
+  }
+  return out.join(' ').trim();
+}
+
 function nombreCortoDesdeNombre(nombre) {
   const palabras = String(nombre || '').trim().split(/\s+/);
   const corto = [];
@@ -33,7 +51,23 @@ function nombreCortoDesdeNombre(nombre) {
     corto.push(limpia);
     if (/[,;|]$/.test(w)) break; // una coma cierra la frase del nombre
   }
-  return corto.join(' ').trim() || String(nombre || '');
+  // Sin extracción al inicio (nombre arranca con código/números): tomar la PRIMERA
+  // racha de palabras limpias en cualquier parte ("FM-128 Tela Fleece 65% …" →
+  // "Tela Fleece") en vez del nombre completo kilométrico.
+  let base = corto;
+  if (!base.length) {
+    for (const w of palabras) {
+      const limpia = w.replace(/[,;|]+$/, '');
+      if (/[\d%]/.test(limpia) || CORTE_NOMBRE.test(limpia)) {
+        if (base.length) break; // se cerró la racha
+        continue; // aún buscando el inicio de la racha
+      }
+      base.push(limpia);
+      if (/[,;|]$/.test(w)) break;
+    }
+  }
+  // Acotar SIEMPRE (la etiqueta es chica) por palabras completas.
+  return recortarPorPalabras(base) || String(nombre || '').slice(0, NOMBRE_MAX_LARGO);
 }
 
 // Color embebido en el nombre del producto ("Tela Lamy Color Blanco" →

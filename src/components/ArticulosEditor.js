@@ -238,11 +238,15 @@ function ArticuloRow({ articulo: a, onChange }) {
   }, [a.color]);
 
   const elegirProducto = (p) => {
+    // Elegir un código LIMPIA los textos sugeridos del packing (nombre/color del
+    // proveedor) y llena solo con lo que la tela de Odoo tenga. Si el producto no
+    // trae el dato, el campo queda VACÍO para escribirlo — no se arrastra el texto
+    // por default del proveedor (que no corresponde a la etiqueta).
     onChange({
       codigo: p.codigo || p.nombre,
-      nombre: p.nombre || a.nombre,
-      composicion: p.composicion || a.composicion,
-      color: p.color || a.color,
+      nombre: p.nombre || '',
+      composicion: p.composicion || '',
+      color: p.color || '',
     });
   };
 
