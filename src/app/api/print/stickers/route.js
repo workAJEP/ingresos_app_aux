@@ -137,6 +137,12 @@ export async function POST(req) {
     const encontrados = new Set(rollos.map((r) => String(r.barcode)));
     const noEncontrados = barcodes.filter((b) => !encontrados.has(b));
 
+    // Rollos cuyo artículo no tiene completados los "Datos de etiqueta": el
+    // Código de tela (cod_dist) sale VACÍO en el CSV y la etiqueta se imprime
+    // sin él. Se avisa explícito en vez de imprimir en silencio una etiqueta
+    // incompleta — causa real de "el código no me lo manda al CSV".
+    const sinCodigo = rollos.filter((r) => !String(r.cod_dist || '').trim()).length;
+
     if (!queueEnabled()) {
       return respond(
         { status: 'error', msg: 'Cola de impresión no configurada. Falta conectar KV (Upstash) en Vercel.', detalles: null },
@@ -151,9 +157,11 @@ export async function POST(req) {
     });
 
     return respond({
-      status: 'success',
-      msg: `Enviado a imprimir: ${rows.length} etiqueta(s) [${departamento}].`,
-      detalles: { stickers: rows.length, departamento, noEncontrados },
+      status: sinCodigo ? 'warning' : 'success',
+      msg: sinCodigo
+        ? `Enviado a imprimir: ${rows.length} etiqueta(s) [${departamento}]. OJO: ${sinCodigo} sin Código de tela — complétalo en "Datos de etiqueta" y reimprime.`
+        : `Enviado a imprimir: ${rows.length} etiqueta(s) [${departamento}].`,
+      detalles: { stickers: rows.length, departamento, noEncontrados, sinCodigo },
     });
   } catch (err) {
     if (err && /ECONNREFUSED|ETIMEDOUT|timeout|ENOTFOUND/i.test(String(err.message || err))) return failOdoo(err);

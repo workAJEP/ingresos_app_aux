@@ -61,9 +61,12 @@ export default function PrintStickerButton({
     setMsg(null);
     const res = await apiFetch('/api/print/stickers', { method: 'POST', body: { ...body, departamento } });
     setEnviando(false);
+    // 'warning' = se imprimió pero con datos faltantes (p.ej. sin Código de
+    // tela): no es un fallo, pero no debe leerse como todo-en-orden.
     const ok = res.status === 'success';
-    beep(ok ? 'success' : 'error');
-    setMsg({ ok, texto: res.msg || (ok ? 'Enviado a imprimir.' : 'No se pudo imprimir.') });
+    const aviso = res.status === 'warning';
+    beep(ok || aviso ? 'success' : 'error');
+    setMsg({ ok, aviso, texto: res.msg || (ok ? 'Enviado a imprimir.' : 'No se pudo imprimir.') });
   };
 
   const imprimirMasivo = () => {
@@ -163,7 +166,15 @@ export default function PrintStickerButton({
           {chipDepartamento}
         </div>
         {editorDepartamento}
-        {msg && <p className={`text-sm font-semibold ${msg.ok ? 'text-green-700' : 'text-red-700'}`}>{msg.texto}</p>}
+        {msg && (
+          <p
+            className={`text-sm font-semibold ${
+              msg.ok ? 'text-green-700' : msg.aviso ? 'text-amber-700' : 'text-red-700'
+            }`}
+          >
+            {msg.texto}
+          </p>
+        )}
       </div>
     );
   }
@@ -228,7 +239,15 @@ export default function PrintStickerButton({
               : `Masivo: ${count} rollo(s) verificados`}
           </button>
 
-          {msg && <p className={`text-sm font-semibold ${msg.ok ? 'text-green-700' : 'text-red-700'}`}>{msg.texto}</p>}
+          {msg && (
+          <p
+            className={`text-sm font-semibold ${
+              msg.ok ? 'text-green-700' : msg.aviso ? 'text-amber-700' : 'text-red-700'
+            }`}
+          >
+            {msg.texto}
+          </p>
+        )}
         </div>
       )}
     </div>

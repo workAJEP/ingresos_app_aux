@@ -10,6 +10,15 @@ import EmptyState from '@/components/ui/EmptyState';
 const DEBOUNCE_MS = 300;
 const MIN_CHARS_PRODUCTO = 1;
 
+// ¿Parece código de color del proveedor (D1000, 58L, W942, 992) en vez de un
+// color legible? Los packing lists traen el código; la etiqueta lleva el nombre.
+function esCodigoColor(s) {
+  const v = String(s || '').trim();
+  if (!v) return true;
+  if (/\d/.test(v)) return true;
+  return v.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g, '').length < 3;
+}
+
 /**
  * Modal "Datos de etiqueta": completa por artículo (nombre+color) los 3 datos
  * que el packing list del proveedor NO trae y que el sticker necesita
@@ -52,7 +61,10 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
             colorOrig: a.color || '',
             nombre: a.nombre || '',
             codigo: a.codigo || '',
-            color: a.color || '',
+            // El color del packing list es el CÓDIGO del proveedor (D1000, 58L):
+            // no sirve para la etiqueta. Se deja el campo vacío para que el
+            // usuario elija el color legible del catálogo Distefano.
+            color: esCodigoColor(a.color) ? '' : a.color || '',
             composicion: a.composicion || '',
             rollos: a.rollos || 0,
           })),
