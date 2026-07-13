@@ -36,6 +36,15 @@ function nombreCortoDesdeNombre(nombre) {
   return corto.join(' ').trim() || String(nombre || '');
 }
 
+// Color embebido en el nombre del producto ("Tela Lamy Color Blanco" →
+// "Blanco"). Se corta al llegar a una palabra de especificación o número.
+function colorDesdeNombre(nombre) {
+  const m = String(nombre || '').match(/\bCOLOR\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?:\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)?)/i);
+  if (!m) return '';
+  const palabras = m[1].split(/\s+/).filter((w) => !CORTE_NOMBRE.test(w));
+  return palabras.join(' ').trim();
+}
+
 function composicionDesdeNombre(nombre) {
   const re = /\d{1,3}\s*%\s*[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/g;
   const partes = String(nombre || '').match(re) || [];
@@ -73,6 +82,7 @@ export async function GET(req) {
         nombre: nombreCortoDesdeNombre(p.name),
         nombreCompleto: p.name || '',
         composicion: (Array.isArray(p.tipo) ? p.tipo[1] : '') || composicionDesdeNombre(p.name),
+        color: colorDesdeNombre(p.name),
       }))
       .sort((a, b) => (b.codigo ? 1 : 0) - (a.codigo ? 1 : 0));
 

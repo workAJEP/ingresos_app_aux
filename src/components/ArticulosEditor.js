@@ -199,16 +199,14 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
   );
 }
 
-let filaSeq = 0;
-
 // Fila de un artículo. Código de tela busca product.product (categoría Telas)
-// por default_code/nombre — al elegir uno EXACTO se autocompletan Nombre y
-// Composición (solo si están vacíos, para no pisar lo que el usuario ya
-// escribió). Color busca colores YA USADOS en otros rollos (más frecuentes
-// primero). Ambos son <datalist> nativos: si no hay match, el usuario escribe
+// por default_code/nombre; al ELEGIR una sugerencia se recolocan Nombre,
+// Composición y Color con lo que la tela de Odoo tenga (pisa lo que hubiera —
+// elegir de la lista es explícito). Color sugiere colores YA USADOS en otros
+// rollos (más frecuentes primero). Los desplegables son propios (no <datalist>
+// nativo, que se ve negro y sin estilo): si no hay match, el usuario escribe
 // libremente y eso es lo que se guarda — Odoo es solo la sugerencia.
 function ArticuloRow({ articulo: a, onChange }) {
-  const idRef = useRef(++filaSeq);
   const [productos, setProductos] = useState([]);
   const [colores, setColores] = useState([]);
   const prodTimer = useRef(null);
@@ -239,69 +237,43 @@ function ArticuloRow({ articulo: a, onChange }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a.color]);
 
-  // Muchas telas de Odoo NO tienen código interno: el valor de la opción es
-  // el código si existe, si no el nombre — así siempre hay algo que mostrar
-  // en el datalist. Al elegir una opción exacta se autocompletan Nombre y
-  // Composición desde el producto (elegir de la lista es explícito: pisa lo
-  // que hubiera).
-  const valorOpcion = (p) => p.codigo || p.nombre;
-
-  const onCodigoChange = (valor) => {
-    const v = valor.trim().toLowerCase();
-    const match = productos.find((p) => valorOpcion(p).toLowerCase() === v);
-    if (match) {
-      onChange({
-        codigo: match.codigo || valor,
-        nombre: match.nombre || a.nombre,
-        composicion: match.composicion || a.composicion,
-      });
-    } else {
-      onChange({ codigo: valor });
-    }
+  const elegirProducto = (p) => {
+    onChange({
+      codigo: p.codigo || p.nombre,
+      nombre: p.nombre || a.nombre,
+      composicion: p.composicion || a.composicion,
+      color: p.color || a.color,
+    });
   };
-
-  const dlProd = `dl-prod-${idRef.current}`;
-  const dlColor = `dl-color-${idRef.current}`;
 
   return (
     <div className="border border-slate-200 rounded-lg p-3 sm:p-2 grid grid-cols-1 sm:grid-cols-[1.1fr_1.3fr_1fr_1.4fr_0.7fr] gap-2 sm:items-center">
       <Campo label="Nombre" value={a.nombre} onChange={(v) => onChange({ nombre: v })} placeholder="JD100M" />
 
-      <label className="block">
-        <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1 sm:hidden">Código de tela</span>
-        <input
-          type="text"
-          list={dlProd}
-          value={a.codigo}
-          onChange={(e) => onCodigoChange(e.target.value)}
-          placeholder="Buscar TTD-… o nombre"
-          className="w-full min-h-[48px] px-3 text-base sm:text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-        />
-        <datalist id={dlProd}>
-          {productos.map((p) => (
-            <option key={p.id} value={valorOpcion(p)}>
-              {p.codigo ? `${p.codigo} — ${p.nombreCompleto || p.nombre}` : p.nombreCompleto || p.nombre}
-            </option>
-          ))}
-        </datalist>
-      </label>
+      <Autocompletar
+        label="Código de tela"
+        value={a.codigo}
+        onChange={(v) => onChange({ codigo: v })}
+        placeholder="Buscar TTD-… o nombre"
+        opciones={productos}
+        onElegir={elegirProducto}
+        render={(p) => (
+          <>
+            {p.codigo && <span className="font-semibold text-blue-900">{p.codigo}</span>}
+            <span className="text-slate-500 block truncate text-xs">{p.nombreCompleto || p.nombre}</span>
+          </>
+        )}
+      />
 
-      <label className="block">
-        <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1 sm:hidden">Color</span>
-        <input
-          type="text"
-          list={dlColor}
-          value={a.color}
-          onChange={(e) => onChange({ color: e.target.value })}
-          placeholder="Azul Obscuro"
-          className="w-full min-h-[48px] px-3 text-base sm:text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-        />
-        <datalist id={dlColor}>
-          {colores.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-      </label>
+      <Autocompletar
+        label="Color"
+        value={a.color}
+        onChange={(v) => onChange({ color: v })}
+        placeholder="Azul Obscuro"
+        opciones={colores}
+        onElegir={(c) => onChange({ color: c })}
+        render={(c) => <span className="text-blue-900">{c}</span>}
+      />
 
       <Campo
         label="Composición"
@@ -314,6 +286,78 @@ function ArticuloRow({ articulo: a, onChange }) {
         {a.rollos} rollo{a.rollos === 1 ? '' : 's'}
       </p>
     </div>
+  );
+}
+
+// Input con desplegable de sugerencias propio (estilizado, no el <datalist>
+// nativo). Se abre con foco + opciones; se elige con clic/tap o ↑↓ + Enter;
+// Escape o blur lo cierran (mousedown en la opción gana al blur del input).
+function Autocompletar({ label, value, onChange, placeholder, opciones, onElegir, render }) {
+  const [abierto, setAbierto] = useState(false);
+  const [activo, setActivo] = useState(-1);
+
+  const elegir = (op) => {
+    onElegir(op);
+    setAbierto(false);
+    setActivo(-1);
+  };
+
+  const onKeyDown = (e) => {
+    if (!abierto || !opciones.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActivo((v) => Math.min(v + 1, opciones.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActivo((v) => Math.max(v - 1, 0));
+    } else if (e.key === 'Enter' && activo >= 0) {
+      e.preventDefault();
+      elegir(opciones[activo]);
+    } else if (e.key === 'Escape') {
+      setAbierto(false);
+    }
+  };
+
+  return (
+    <label className="block relative">
+      <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1 sm:hidden">{label}</span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setAbierto(true);
+          setActivo(-1);
+        }}
+        onFocus={() => setAbierto(true)}
+        onBlur={() => setTimeout(() => setAbierto(false), 150)}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        autoComplete="off"
+        className="w-full min-h-[48px] px-3 text-base sm:text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+      />
+      {abierto && opciones.length > 0 && (
+        <ul className="absolute left-0 right-0 top-full mt-1 z-30 max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+          {opciones.map((op, i) => (
+            <li key={op.id ?? op}>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault(); // que el blur del input no cierre antes del clic
+                  elegir(op);
+                }}
+                onMouseEnter={() => setActivo(i)}
+                className={`w-full text-left px-3 py-2 text-sm leading-tight ${
+                  i === activo ? 'bg-blue-50' : 'bg-white'
+                }`}
+              >
+                {render(op)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </label>
   );
 }
 
