@@ -1,17 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, Tags } from 'lucide-react';
 import { apiFetch } from '@/components/useApi';
 import Spinner from '@/components/ui/Spinner';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import EmptyState from '@/components/ui/EmptyState';
 
+const DEBOUNCE_MS = 300;
+const MIN_CHARS_PRODUCTO = 2;
+
 /**
  * Modal "Datos de etiqueta": completa por artículo (nombre+color) los 3 datos
  * que el packing list del proveedor NO trae y que el sticker necesita
  * (Código Distefano, Color legible, Composición). Se aplica UNA VEZ POR
  * ARTÍCULO a todos los rollos del grupo.
+ *
+ * Código de tela y Color se SUGIEREN desde Odoo (producto real / colores ya
+ * usados); si no hay match, el usuario escribe libremente — última instancia.
  *
  * GET  /api/odoo/articulos?importacionId=<id>
  * POST /api/odoo/articulos  { importacionId, articulos: [{ nombreOrig,
@@ -68,8 +74,8 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
     onClose?.();
   };
 
-  const actualizarCampo = (idx, campo, valor) => {
-    setArticulos((prev) => prev.map((a, i) => (i === idx ? { ...a, [campo]: valor } : a)));
+  const actualizarArticulo = (idx, cambios) => {
+    setArticulos((prev) => prev.map((a, i) => (i === idx ? { ...a, ...cambios } : a)));
   };
 
   const guardar = async () => {
@@ -93,6 +99,14 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
     setGuardando(false);
     if (res.status === 'error') {
       setError(res.msg);
+      return;
+    }
+    if (res.detalles?.noActualizados?.length) {
+      // Algunos artículos no matchearon ningún rollo (grupo cambió entre el
+      // GET y el POST) — se avisa explícito en vez de cerrar como si todo
+      // hubiera quedado bien; el usuario puede reabrir y reintentar esos.
+      setError(res.msg);
+      onSaved?.();
       return;
     }
     setMsg(res.msg);
@@ -128,7 +142,8 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
         </div>
 
         <p className="text-sm text-slate-500 mb-4 shrink-0">
-          Estos datos van en la etiqueta y no vienen en el packing list.
+          Estos datos van en la etiqueta y no vienen en el packing list. Código de tela y Color se sugieren
+          desde Odoo — si no aparece el que buscas, escríbelo directamente.
         </p>
 
         {error && <ErrorBanner message={error} className="mb-3 shrink-0" />}
@@ -144,47 +159,16 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
           ) : (
             <div className="space-y-3">
               {/* Encabezado solo visible en sm+ (vista tipo tabla) */}
-              <div className="hidden sm:grid sm:grid-cols-[1.2fr_1fr_1fr_1.4fr_0.8fr] gap-2 px-1 text-[11px] font-semibold uppercase text-blue-700">
+              <div className="hidden sm:grid sm:grid-cols-[1.1fr_1.3fr_1fr_1.4fr_0.7fr] gap-2 px-1 text-[11px] font-semibold uppercase text-blue-700">
                 <span>Nombre</span>
-                <span>Código</span>
+                <span>Código de tela</span>
                 <span>Color</span>
                 <span>Composición</span>
                 <span className="text-right">Rollos</span>
               </div>
 
               {articulos.map((a, idx) => (
-                <div
-                  key={`${a.nombreOrig}|${a.colorOrig}`}
-                  className="border border-slate-200 rounded-lg p-3 sm:p-2 grid grid-cols-1 sm:grid-cols-[1.2fr_1fr_1fr_1.4fr_0.8fr] gap-2 sm:items-center"
-                >
-                  <Campo
-                    label="Nombre"
-                    value={a.nombre}
-                    onChange={(v) => actualizarCampo(idx, 'nombre', v)}
-                    placeholder="JD100M"
-                  />
-                  <Campo
-                    label="Código"
-                    value={a.codigo}
-                    onChange={(v) => actualizarCampo(idx, 'codigo', v)}
-                    placeholder="TTD-0150"
-                  />
-                  <Campo
-                    label="Color"
-                    value={a.color}
-                    onChange={(v) => actualizarCampo(idx, 'color', v)}
-                    placeholder="Azul Obscuro"
-                  />
-                  <Campo
-                    label="Composición"
-                    value={a.composicion}
-                    onChange={(v) => actualizarCampo(idx, 'composicion', v)}
-                    placeholder="99% Algodón 1% Elastan"
-                  />
-                  <p className="text-sm text-slate-500 sm:text-right sm:text-xs">
-                    {a.rollos} rollo{a.rollos === 1 ? '' : 's'}
-                  </p>
-                </div>
+                <ArticuloRow key={`${a.nombreOrig}|${a.colorOrig}`} articulo={a} onChange={(cambios) => actualizarArticulo(idx, cambios)} />
               ))}
             </div>
           )}
@@ -211,6 +195,116 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+let filaSeq = 0;
+
+// Fila de un artículo. Código de tela busca product.product (categoría Telas)
+// por default_code/nombre — al elegir uno EXACTO se autocompletan Nombre y
+// Composición (solo si están vacíos, para no pisar lo que el usuario ya
+// escribió). Color busca colores YA USADOS en otros rollos (más frecuentes
+// primero). Ambos son <datalist> nativos: si no hay match, el usuario escribe
+// libremente y eso es lo que se guarda — Odoo es solo la sugerencia.
+function ArticuloRow({ articulo: a, onChange }) {
+  const idRef = useRef(++filaSeq);
+  const [productos, setProductos] = useState([]);
+  const [colores, setColores] = useState([]);
+  const prodTimer = useRef(null);
+  const colorTimer = useRef(null);
+
+  useEffect(() => {
+    clearTimeout(prodTimer.current);
+    const q = a.codigo.trim();
+    if (q.length < MIN_CHARS_PRODUCTO) {
+      setProductos([]);
+      return undefined;
+    }
+    prodTimer.current = setTimeout(async () => {
+      const res = await apiFetch(`/api/odoo/productos?q=${encodeURIComponent(q)}`);
+      if (res.status === 'success') setProductos(res.detalles?.productos || []);
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(prodTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [a.codigo]);
+
+  useEffect(() => {
+    clearTimeout(colorTimer.current);
+    colorTimer.current = setTimeout(async () => {
+      const res = await apiFetch(`/api/odoo/colores?q=${encodeURIComponent(a.color.trim())}`);
+      if (res.status === 'success') setColores(res.detalles?.colores || []);
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(colorTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [a.color]);
+
+  const onCodigoChange = (valor) => {
+    const match = productos.find((p) => p.codigo.toLowerCase() === valor.trim().toLowerCase());
+    if (match) {
+      onChange({
+        codigo: match.codigo,
+        nombre: a.nombre.trim() ? a.nombre : match.nombre,
+        composicion: a.composicion.trim() ? a.composicion : match.composicion,
+      });
+    } else {
+      onChange({ codigo: valor });
+    }
+  };
+
+  const dlProd = `dl-prod-${idRef.current}`;
+  const dlColor = `dl-color-${idRef.current}`;
+
+  return (
+    <div className="border border-slate-200 rounded-lg p-3 sm:p-2 grid grid-cols-1 sm:grid-cols-[1.1fr_1.3fr_1fr_1.4fr_0.7fr] gap-2 sm:items-center">
+      <Campo label="Nombre" value={a.nombre} onChange={(v) => onChange({ nombre: v })} placeholder="JD100M" />
+
+      <label className="block">
+        <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1 sm:hidden">Código de tela</span>
+        <input
+          type="text"
+          list={dlProd}
+          value={a.codigo}
+          onChange={(e) => onCodigoChange(e.target.value)}
+          placeholder="Buscar TTD-… o nombre"
+          className="w-full min-h-[48px] px-3 text-base sm:text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+        />
+        <datalist id={dlProd}>
+          {productos.map((p) => (
+            <option key={p.id} value={p.codigo}>
+              {p.codigo} — {p.nombre}
+            </option>
+          ))}
+        </datalist>
+      </label>
+
+      <label className="block">
+        <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1 sm:hidden">Color</span>
+        <input
+          type="text"
+          list={dlColor}
+          value={a.color}
+          onChange={(e) => onChange({ color: e.target.value })}
+          placeholder="Azul Obscuro"
+          className="w-full min-h-[48px] px-3 text-base sm:text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+        />
+        <datalist id={dlColor}>
+          {colores.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+      </label>
+
+      <Campo
+        label="Composición"
+        value={a.composicion}
+        onChange={(v) => onChange({ composicion: v })}
+        placeholder="99% Algodón 1% Elastano"
+      />
+
+      <p className="text-sm text-slate-500 sm:text-right sm:text-xs">
+        {a.rollos} rollo{a.rollos === 1 ? '' : 's'}
+      </p>
     </div>
   );
 }

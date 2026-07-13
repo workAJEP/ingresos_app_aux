@@ -3,6 +3,7 @@
 import { parseExcel } from '@/lib/parseExcel';
 import { parsePdf } from '@/lib/parsePdf';
 import { cargarRollos } from '@/lib/rollos';
+import { odooSearchRead } from '@/lib/odoo';
 import { respond, badRequest, failOdoo } from '@/lib/http';
 
 export const runtime = 'nodejs';
@@ -66,6 +67,51 @@ export async function POST(req) {
   }
 
   try {
+    // Safeguard: si TODOS los barcodes de este archivo YA EXISTEN en Odoo
+    // (en cualquier expediente), es un re-upload del mismo packing list —
+    // no crear nada, avisar claro en vez de dejar que el usuario piense que
+    // cargó algo nuevo (cargar_rollos igual los habría omitido uno por uno,
+    // pero sin este chequeo previo el mensaje resultante es confuso: "0
+    // creados, 137 ya existían" en vez de decir explícitamente "duplicado").
+    const todosLosBarcodes = rows.map((r) => r.barcode);
+    const existentes = [];
+    for (let i = 0; i < todosLosBarcodes.length; i += 500) {
+      const chunk = todosLosBarcodes.slice(i, i + 500);
+      const encontrados = await odooSearchRead(
+        'distefano.importacion.rollo',
+        [['barcode', 'in', chunk]],
+        ['barcode', 'importacion_id'],
+        chunk.length,
+      );
+      existentes.push(...encontrados);
+    }
+
+    if (existentes.length >= todosLosBarcodes.length && todosLosBarcodes.length > 0) {
+      const expedientes = [
+        ...new Set(
+          existentes
+            .map((r) => (Array.isArray(r.importacion_id) ? r.importacion_id[1] : ''))
+            .filter(Boolean),
+        ),
+      ];
+      return respond({
+        status: 'warning',
+        msg:
+          `Este packing list ya fue cargado antes: los ${todosLosBarcodes.length} rollos ya existen en Odoo` +
+          (expedientes.length ? ` (${expedientes.join(', ')}).` : '.'),
+        detalles: {
+          creados: 0,
+          yaExistentes: existentes.map((r) => r.barcode),
+          totalFilas,
+          descartadasSinBarcode,
+          duplicadasEnArchivo,
+          totalRecibidas: rows.length,
+          meta,
+          yaSubido: true,
+        },
+      });
+    }
+
     const { creados, yaExistentes, totalRecibidas } = await cargarRollos(importacionId, rows, operador);
     const art = meta && meta.articulo ? ` · Artículo ${meta.articulo}` : '';
     return respond({

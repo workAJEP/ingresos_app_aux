@@ -29,11 +29,24 @@ export default function ContenedoresPage() {
       setImportaciones(res.detalles?.importaciones || []);
     }
     setLoading(false);
+    return res;
   }, []);
 
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  // Tras subir un packing list, abre directo el formulario de "Datos de
+  // etiqueta" para el expediente recién cargado (reusa la misma llamada para
+  // refrescar la grilla, evitando un segundo fetch).
+  const abrirDatosEtiqueta = useCallback(
+    async (targetId) => {
+      const res = await cargar();
+      const encontrada = (res?.detalles?.importaciones || []).find((i) => i.id === targetId);
+      setArticulosEditor({ importacionId: targetId, expedienteName: encontrada?.name });
+    },
+    [cargar],
+  );
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
@@ -81,7 +94,13 @@ export default function ContenedoresPage() {
         </div>
       )}
 
-      <UploadContenedor open={uploadAbierto} onClose={() => setUploadAbierto(false)} operador={operador} onUploaded={cargar} />
+      <UploadContenedor
+        open={uploadAbierto}
+        onClose={() => setUploadAbierto(false)}
+        operador={operador}
+        onUploaded={cargar}
+        onCompletarDatos={abrirDatosEtiqueta}
+      />
 
       <ArticulosEditor
         open={!!articulosEditor}

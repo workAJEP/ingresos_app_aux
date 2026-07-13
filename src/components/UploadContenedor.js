@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { X, UploadCloud, FileSpreadsheet, ChevronDown, ChevronUp, PlusCircle } from 'lucide-react';
+import { X, UploadCloud, FileSpreadsheet, ChevronDown, ChevronUp, PlusCircle, Tags } from 'lucide-react';
 import { apiFetch } from './useApi';
 import ImportacionPicker from './ImportacionPicker';
 import Spinner from './ui/Spinner';
@@ -14,7 +14,7 @@ const ACCEPT = '.xlsx,.xls,.csv,.pdf';
  * por drag&drop o selector (POST multipart /api/odoo/rollos/upload).
  * Resultado expandible (creados / yaExistentes / etc.).
  */
-export default function UploadContenedor({ open, onClose, operador, onUploaded }) {
+export default function UploadContenedor({ open, onClose, operador, onUploaded, onCompletarDatos }) {
   const [modo, setModo] = useState('existente'); // 'existente' | 'nuevo'
   const [importacionId, setImportacionId] = useState(null);
   const [descripcion, setDescripcion] = useState('');
@@ -24,6 +24,7 @@ export default function UploadContenedor({ open, onClose, operador, onUploaded }
   const [dragOver, setDragOver] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
   const [resultado, setResultado] = useState(null);
+  const [targetIdSubido, setTargetIdSubido] = useState(null);
   const [error, setError] = useState('');
   const [expandido, setExpandido] = useState(false);
   const inputRef = useRef(null);
@@ -38,6 +39,7 @@ export default function UploadContenedor({ open, onClose, operador, onUploaded }
     setContenedor('');
     setArchivo(null);
     setResultado(null);
+    setTargetIdSubido(null);
     setError('');
     setExpandido(false);
   };
@@ -99,6 +101,7 @@ export default function UploadContenedor({ open, onClose, operador, onUploaded }
         setError(res.msg);
       } else {
         setResultado(res.detalles);
+        setTargetIdSubido(targetId);
         onUploaded?.(res.detalles);
       }
     } finally {
@@ -274,7 +277,14 @@ export default function UploadContenedor({ open, onClose, operador, onUploaded }
                 )}
               </div>
             )}
-            <div className="flex justify-end gap-3 mt-4">
+            {resultado.creados > 0 && (
+              <p className="text-xs text-slate-500 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                Falta completar el Código de tela, Color y Composición de la etiqueta — no vienen en el
+                packing list.
+              </p>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-3 mt-4">
               <button
                 type="button"
                 onClick={() => setResultado(null)}
@@ -282,13 +292,37 @@ export default function UploadContenedor({ open, onClose, operador, onUploaded }
               >
                 <PlusCircle className="w-4 h-4" aria-hidden="true" /> Cargar otro
               </button>
-              <button
-                type="button"
-                onClick={cerrar}
-                className="px-4 py-2 text-sm text-white bg-blue-800 hover:bg-blue-900 rounded-xl transition-colors"
-              >
-                Cerrar
-              </button>
+              {resultado.creados > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={cerrar}
+                    className="px-4 py-2 text-sm text-blue-800 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = targetIdSubido;
+                      cerrar();
+                      onCompletarDatos?.(id);
+                    }}
+                    className="px-4 py-2 text-sm text-white bg-blue-800 hover:bg-blue-900 rounded-xl transition-colors flex items-center gap-2"
+                  >
+                    <Tags className="w-4 h-4" aria-hidden="true" />
+                    Completar datos de etiqueta
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={cerrar}
+                  className="px-4 py-2 text-sm text-white bg-blue-800 hover:bg-blue-900 rounded-xl transition-colors"
+                >
+                  Cerrar
+                </button>
+              )}
             </div>
           </div>
         )}

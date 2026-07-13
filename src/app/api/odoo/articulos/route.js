@@ -75,6 +75,12 @@ export async function POST(req) {
 
   try {
     let actualizados = 0;
+    // Artículos cuyo grupo original (nombreOrig+colorOrig) no matcheó ningún
+    // rollo: antes esto se ignoraba en silencio (`continue`) y el usuario
+    // recibía un mensaje de "éxito" genérico aunque ESE artículo no se
+    // hubiera tocado — causa real de "la composición no se coloca
+    // correctamente" cuando el grupo cambiaba entre el GET y el POST.
+    const noActualizados = [];
 
     for (const a of articulos) {
       // Claves ORIGINALES del grupo (pueden cambiar al escribir los nuevos valores).
@@ -91,7 +97,10 @@ export async function POST(req) {
         ['id'],
         MAX,
       );
-      if (!ids.length) continue;
+      if (!ids.length) {
+        noActualizados.push(nombreOrig || colorOrig || '(artículo sin nombre)');
+        continue;
+      }
 
       const vals = {};
       if (a.codigo !== undefined) vals.cod_dist = String(a.codigo || '');
@@ -105,9 +114,11 @@ export async function POST(req) {
     }
 
     return respond({
-      status: 'success',
-      msg: `Datos de artículo actualizados en ${actualizados} rollo(s).`,
-      detalles: { actualizados },
+      status: noActualizados.length ? 'warning' : 'success',
+      msg: noActualizados.length
+        ? `Actualizados ${actualizados} rollo(s). No se encontró: ${noActualizados.join(', ')} (recarga e inténtalo de nuevo).`
+        : `Datos de artículo actualizados en ${actualizados} rollo(s).`,
+      detalles: { actualizados, noActualizados },
     });
   } catch (err) {
     return failOdoo(err);
