@@ -43,8 +43,12 @@ $Headers = @{ 'x-pull-token' = $PullToken }
 $HeaderCols = @('Hoja', 'Proveedor', 'Composición', 'Nombre', 'Código', 'Color', 'Conteo', 'Roll No', 'Net Weight', 'Yards', 'Departamento', 'ID Unico', 'Rollo #')
 $KeyCols    = @('hoja', 'proveedor', 'composicion', 'nombre', 'codigo', 'color', 'conteo', 'rollno', 'netweight', 'yards', 'departamento', 'idunico', 'rollonum')
 
+$Version = '2026-07-10 rollos-13col'
+Write-Host "[poller] VERSION: $Version"
 Write-Host "[poller] sondeo cada $Interval s -> $JobsUrl"
 Write-Host "[poller] salida CSV: $OutDir"
+Write-Host "[poller] COLUMNAS: $($HeaderCols -join ',')"
+Write-Host '[poller] (si ves "token,bulto,marchamo" arriba, este poller esta VIEJO)'
 if ($BtwPath) { Write-Host "[poller] BarTender: $BartendExe  /F=$BtwPath  /PRN=$Printer" }
 else { Write-Host '[poller] sin BTW_PATH: solo se deja el CSV (usar Integration Builder).' }
 
@@ -59,6 +63,16 @@ function Format-Cell($v) {
 # Escribe el CSV de forma atómica (.tmp + rename) para que BarTender nunca lea
 # un archivo a medias.
 function Write-CsvFile($rows, $path) {
+  # Aviso si el job no trae las claves esperadas (poller desactualizado): sin
+  # esto el CSV saldria con la cabecera correcta pero todas las celdas vacias.
+  if ($rows.Count -gt 0) {
+    $presentes = @($rows[0].PSObject.Properties.Name)
+    $faltan = @($KeyCols | Where-Object { $presentes -notcontains $_ })
+    if ($faltan.Count -gt 0) {
+      Write-Warning "[poller] el job no trae: $($faltan -join ',')  (trae: $($presentes -join ','))"
+      Write-Warning '[poller] el CSV saldra vacio -> actualiza poll-agent.ps1 o la app.'
+    }
+  }
   $sb = New-Object System.Text.StringBuilder
   [void]$sb.AppendLine(($HeaderCols -join ','))
   foreach ($r in $rows) {
@@ -66,8 +80,9 @@ function Write-CsvFile($rows, $path) {
     [void]$sb.AppendLine($line)
   }
   $tmp = "$path.tmp"
-  # UTF-8 sin BOM para que los acentos salgan bien en la etiqueta.
-  $enc = New-Object System.Text.UTF8Encoding($false)
+  # UTF-8 CON BOM: las cabeceras llevan tildes (Composición, Código) y sin BOM
+  # BarTender/Excel las leen como ANSI y el mapeo de campos falla.
+  $enc = New-Object System.Text.UTF8Encoding($true)
   [System.IO.File]::WriteAllText($tmp, $sb.ToString(), $enc)
   Move-Item -LiteralPath $tmp -Destination $path -Force
 }
