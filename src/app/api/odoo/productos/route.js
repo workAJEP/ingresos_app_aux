@@ -13,6 +13,16 @@ export const dynamic = 'force-dynamic';
 const TELAS_CATEG_ID = Number(process.env.ODOO_TELAS_CATEG_ID || 368);
 const MIN_CHARS = 1;
 
+// Solo ~1 de cada 10 telas tiene el campo Composición (`tipo`) cargado en
+// Odoo, pero el NOMBRE del producto casi siempre la trae embebida
+// ("98%C/2%S", "65% Poliester 35%Algodón", "81%C 17%P 2%E"). Extrae del
+// nombre los tramos "NN% Fibra" consecutivos como fallback.
+function composicionDesdeNombre(nombre) {
+  const re = /\d{1,3}\s*%\s*[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/g;
+  const partes = String(nombre || '').match(re) || [];
+  return partes.length ? partes.map((p) => p.replace(/\s+/g, ' ').trim()).join(' ') : '';
+}
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get('q') || '').trim();
@@ -42,7 +52,7 @@ export async function GET(req) {
         id: p.id,
         codigo: p.default_code || '',
         nombre: p.name || '',
-        composicion: Array.isArray(p.tipo) ? p.tipo[1] : '',
+        composicion: (Array.isArray(p.tipo) ? p.tipo[1] : '') || composicionDesdeNombre(p.name),
       }))
       .sort((a, b) => (b.codigo ? 1 : 0) - (a.codigo ? 1 : 0));
 
