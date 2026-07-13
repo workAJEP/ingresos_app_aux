@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const TELAS_CATEG_ID = Number(process.env.ODOO_TELAS_CATEG_ID || 368);
-const MIN_CHARS = 2;
+const MIN_CHARS = 1;
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
@@ -34,12 +34,17 @@ export async function GET(req) {
       20,
     );
 
-    const detalles = productos.map((p) => ({
-      id: p.id,
-      codigo: p.default_code || '',
-      nombre: p.name || '',
-      composicion: Array.isArray(p.tipo) ? p.tipo[1] : '',
-    }));
+    // Muchas telas NO tienen Código Interno en Odoo — se mantienen (el
+    // frontend usa el nombre como valor), pero las que sí tienen código van
+    // primero: son las que permiten el autocompletado exacto.
+    const detalles = productos
+      .map((p) => ({
+        id: p.id,
+        codigo: p.default_code || '',
+        nombre: p.name || '',
+        composicion: Array.isArray(p.tipo) ? p.tipo[1] : '',
+      }))
+      .sort((a, b) => (b.codigo ? 1 : 0) - (a.codigo ? 1 : 0));
 
     return respond({ status: 'success', msg: '', detalles: { productos: detalles } });
   } catch (err) {

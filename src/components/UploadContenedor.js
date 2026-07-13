@@ -103,6 +103,17 @@ export default function UploadContenedor({ open, onClose, operador, onUploaded, 
         setResultado(res.detalles);
         setTargetIdSubido(targetId);
         onUploaded?.(res.detalles);
+        // Si se crearon rollos, abrir DE INMEDIATO el formulario de "Datos de
+        // etiqueta" (nombre, código de tela, color): son obligatorios para el
+        // sticker y no vienen en el packing list — el usuario los completa
+        // como parte de la misma carga, no como paso opcional después.
+        if ((res.detalles?.creados || 0) > 0) {
+          const id = targetId;
+          resetear();
+          onClose?.();
+          onCompletarDatos?.(id);
+          return;
+        }
       }
     } finally {
       setSubiendo(false);

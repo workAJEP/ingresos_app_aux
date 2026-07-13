@@ -8,7 +8,7 @@ import ErrorBanner from '@/components/ui/ErrorBanner';
 import EmptyState from '@/components/ui/EmptyState';
 
 const DEBOUNCE_MS = 300;
-const MIN_CHARS_PRODUCTO = 2;
+const MIN_CHARS_PRODUCTO = 1;
 
 /**
  * Modal "Datos de etiqueta": completa por artículo (nombre+color) los 3 datos
@@ -239,13 +239,21 @@ function ArticuloRow({ articulo: a, onChange }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a.color]);
 
+  // Muchas telas de Odoo NO tienen código interno: el valor de la opción es
+  // el código si existe, si no el nombre — así siempre hay algo que mostrar
+  // en el datalist. Al elegir una opción exacta se autocompletan Nombre y
+  // Composición desde el producto (elegir de la lista es explícito: pisa lo
+  // que hubiera).
+  const valorOpcion = (p) => p.codigo || p.nombre;
+
   const onCodigoChange = (valor) => {
-    const match = productos.find((p) => p.codigo.toLowerCase() === valor.trim().toLowerCase());
+    const v = valor.trim().toLowerCase();
+    const match = productos.find((p) => valorOpcion(p).toLowerCase() === v);
     if (match) {
       onChange({
-        codigo: match.codigo,
-        nombre: a.nombre.trim() ? a.nombre : match.nombre,
-        composicion: a.composicion.trim() ? a.composicion : match.composicion,
+        codigo: match.codigo || valor,
+        nombre: match.nombre || a.nombre,
+        composicion: match.composicion || a.composicion,
       });
     } else {
       onChange({ codigo: valor });
@@ -271,8 +279,8 @@ function ArticuloRow({ articulo: a, onChange }) {
         />
         <datalist id={dlProd}>
           {productos.map((p) => (
-            <option key={p.id} value={p.codigo}>
-              {p.codigo} — {p.nombre}
+            <option key={p.id} value={valorOpcion(p)}>
+              {p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre}
             </option>
           ))}
         </datalist>
