@@ -13,6 +13,12 @@ export const dynamic = 'force-dynamic';
 const TELAS_CATEG_ID = Number(process.env.ODOO_TELAS_CATEG_ID || 368);
 const MIN_CHARS = 1;
 
+// Atributo "Color" de Odoo (product.attribute). El NOMBRE legible del color vive en
+// sus valores (product.attribute.value): p.ej. la tela cuyo código de color es D1000
+// tiene el valor "Azul Obscuro". El nombre del producto solo trae el CÓDIGO
+// ("…código de color D1000"), que no sirve para la etiqueta.
+const COLOR_ATTR_ID = Number(process.env.ODOO_COLOR_ATTR_ID || 1);
+
 // Solo ~1 de cada 10 telas tiene el campo Composición (`tipo`) cargado en
 // Odoo, pero el NOMBRE del producto casi siempre la trae embebida
 // ("98%C/2%S", "65% Poliester 35%Algodón", "81%C 17%P 2%E"). Extrae del
@@ -75,7 +81,11 @@ function nombreCortoDesdeNombre(nombre) {
 function colorDesdeNombre(nombre) {
   const m = String(nombre || '').match(/\bCOLOR\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?:\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)?)/i);
   if (!m) return '';
-  const palabras = m[1].split(/\s+/).filter((w) => !CORTE_NOMBRE.test(w));
+  const palabras = m[1]
+    .split(/\s+/)
+    // Descarta restos de código: "…código de color D1000" capturaba la "D".
+    // Un color legible tiene al menos 3 letras ("Azul", "Blanco"), nunca 1-2.
+    .filter((w) => w.length >= 3 && !CORTE_NOMBRE.test(w));
   return palabras.join(' ').trim();
 }
 
@@ -102,9 +112,37 @@ export async function GET(req) {
         ['default_code', 'ilike', q],
         ['name', 'ilike', q],
       ],
-      ['id', 'default_code', 'name', 'tipo'],
+      ['id', 'default_code', 'name', 'tipo', 'attribute_value_ids'],
       20,
     );
+
+    // Nombre legible del color: se resuelven en UNA sola consulta los valores de
+    // atributo de todos los productos y se toma el del atributo "Color".
+    const valorIds = [...new Set(productos.flatMap((p) => p.attribute_value_ids || []))];
+    const colorPorValorId = new Map();
+    if (valorIds.length) {
+      try {
+        const valores = await odooSearchRead(
+          'product.attribute.value',
+          [['id', 'in', valorIds]],
+          ['id', 'name', 'attribute_id'],
+          200,
+        );
+        for (const v of valores) {
+          const attrId = Array.isArray(v.attribute_id) ? v.attribute_id[0] : v.attribute_id;
+          if (attrId === COLOR_ATTR_ID && v.name) colorPorValorId.set(v.id, v.name);
+        }
+      } catch (e) {
+        // sin atributos → se cae al color embebido en el nombre (abajo)
+      }
+    }
+    const colorDeProducto = (p) => {
+      for (const vid of p.attribute_value_ids || []) {
+        const nombre = colorPorValorId.get(vid);
+        if (nombre) return nombre; // "Azul Obscuro", "Blanco"… (nombre, no el código)
+      }
+      return colorDesdeNombre(p.name); // último recurso
+    };
 
     // Muchas telas NO tienen Código Interno en Odoo — se mantienen (el
     // frontend usa el nombre como valor), pero las que sí tienen código van
@@ -116,7 +154,7 @@ export async function GET(req) {
         nombre: nombreCortoDesdeNombre(p.name),
         nombreCompleto: p.name || '',
         composicion: (Array.isArray(p.tipo) ? p.tipo[1] : '') || composicionDesdeNombre(p.name),
-        color: colorDesdeNombre(p.name),
+        color: colorDeProducto(p),
       }))
       .sort((a, b) => (b.codigo ? 1 : 0) - (a.codigo ? 1 : 0));
 
