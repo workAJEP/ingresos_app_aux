@@ -280,7 +280,7 @@ function ArticuloRow({ articulo: a, onChange }) {
         <datalist id={dlProd}>
           {productos.map((p) => (
             <option key={p.id} value={valorOpcion(p)}>
-              {p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre}
+              {p.codigo ? `${p.codigo} — ${p.nombreCompleto || p.nombre}` : p.nombreCompleto || p.nombre}
             </option>
           ))}
         </datalist>

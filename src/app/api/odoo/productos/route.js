@@ -17,6 +17,25 @@ const MIN_CHARS = 1;
 // Odoo, pero el NOMBRE del producto casi siempre la trae embebida
 // ("98%C/2%S", "65% Poliester 35%Algodón", "81%C 17%P 2%E"). Extrae del
 // nombre los tramos "NN% Fibra" consecutivos como fallback.
+// El nombre en Odoo trae todo pegado ("Tela Fleece FM-12855 65% Poliéster
+// 35% Algodón Ancho 71¨ Peso 260gsm"), pero la etiqueta solo necesita el
+// nombre puro ("Tela Fleece"). Se toman las palabras iniciales hasta topar
+// con un código (algo con dígitos), un porcentaje o una palabra clave de
+// especificación (Ancho, Peso, Color, Estilo…). Si no queda nada, se
+// devuelve el nombre completo.
+const CORTE_NOMBRE = /^(ancho|peso|color|estilo|ref|rollos?|titulo|título|sarga|tejido|gms?|gsm|oz|yds?|mts?)\.?,?$/i;
+function nombreCortoDesdeNombre(nombre) {
+  const palabras = String(nombre || '').trim().split(/\s+/);
+  const corto = [];
+  for (const w of palabras) {
+    const limpia = w.replace(/[,;|]+$/, '');
+    if (/[\d%]/.test(limpia) || CORTE_NOMBRE.test(limpia)) break;
+    corto.push(limpia);
+    if (/[,;|]$/.test(w)) break; // una coma cierra la frase del nombre
+  }
+  return corto.join(' ').trim() || String(nombre || '');
+}
+
 function composicionDesdeNombre(nombre) {
   const re = /\d{1,3}\s*%\s*[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/g;
   const partes = String(nombre || '').match(re) || [];
@@ -51,7 +70,8 @@ export async function GET(req) {
       .map((p) => ({
         id: p.id,
         codigo: p.default_code || '',
-        nombre: p.name || '',
+        nombre: nombreCortoDesdeNombre(p.name),
+        nombreCompleto: p.name || '',
         composicion: (Array.isArray(p.tipo) ? p.tipo[1] : '') || composicionDesdeNombre(p.name),
       }))
       .sort((a, b) => (b.codigo ? 1 : 0) - (a.codigo ? 1 : 0));
