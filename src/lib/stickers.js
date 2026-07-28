@@ -9,7 +9,7 @@
 //   conteo       ← "pieza / totalArticulo" del rollo dentro del expediente
 //   Roll No      ← rollo.barcode (= codigo)
 //   Net Weight   ← rollo.peso_neto
-//   Yards        ← rollo.yardas
+//   Yards        ← rollo.yardas (viene en METROS; se convierte a yardas)
 //   Departamento ← lo SELECCIONA EL USUARIO al imprimir (no es fijo)
 //
 // docs/poll-agent.py debe usar LAS MISMAS columnas (mismo orden y cabeceras).
@@ -43,6 +43,11 @@ function num(v, dec) {
 const numPeso = (v) => num(v, 3);
 const numYardas = (v) => num(v, 2);
 
+// El largo del rollo se INGRESA EN METROS (campo `yardas` de Odoo trae metros),
+// pero la etiqueta imprime yardas: 1 m = 1.09361 yd (ej. 84.4 m -> 92.30 yd).
+const METROS_A_YARDAS = 1.09361;
+const metrosAYardas = (v) => numYardas((Number(v) || 0) * METROS_A_YARDAS);
+
 // Normaliza un rollo (registro Odoo `distefano.importacion.rollo`) a fila de
 // sticker, con el mapeo de `docs/Recepcion MP.xlsx`:
 //   Hoja        correlativo dentro de la impresión (1..N)
@@ -54,7 +59,7 @@ const numYardas = (v) => num(v, 2);
 //   Conteo      "pieza / totalArticulo" (lo calcula el caller)
 //   Roll No     rollo.barcode
 //   Net Weight  rollo.peso_neto
-//   Yards       rollo.yardas
+//   Yards       rollo.yardas en METROS -> convertido a yardas (×1.09361)
 //   Departamento  LO ESTABLECE EL USUARIO al imprimir
 //   ID Unico    rollo.barcode (el valor escaneable, igual que Roll No)
 //   Rollo #     rollo.id de Odoo (1:1 con la fila del packing list)
@@ -70,7 +75,7 @@ export function filaRollo(rollo, { proveedor = '', conteo = '', departamento = '
     conteo,
     rollno: barcode,
     netweight: numPeso(rollo.peso_neto),
-    yards: numYardas(rollo.yardas),
+    yards: metrosAYardas(rollo.yardas), // metros -> yardas al imprimir
     departamento,
     idunico: barcode,
     rollonum: String(rollo.id || ''),
