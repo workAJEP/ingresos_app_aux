@@ -145,7 +145,7 @@ export async function POST(req) {
 
     if (!queueEnabled()) {
       return respond(
-        { status: 'error', msg: 'Cola de impresión no configurada. Falta conectar KV (Upstash) en Vercel.', detalles: null },
+        { status: 'error', msg: 'Cola de impresión no configurada. Falta DATABASE_URL (Postgres) en Vercel.', detalles: null },
         500,
       );
     }

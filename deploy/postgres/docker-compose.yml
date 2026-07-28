@@ -1,0 +1,47 @@
+# Postgres para la cola de impresion de Ingreso Contenedores.
+# AISLADO del Postgres de Odoo (5432) y del de App Etiquetas (5433): contenedor
+# propio, volumen propio, BD propia y puerto 5436 en el host.
+#
+# Uso:  ./setup.sh      (genera password + certs y levanta el contenedor)
+services:
+  contenedores-db:
+    image: postgres:16-alpine
+    container_name: contenedores-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: contenedores
+      POSTGRES_USER: contenedores
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD (usa ./setup.sh)}
+      # Fuerza scram-sha-256 tambien para conexiones remotas.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      # 5436 en el HOST -> 5432 en el contenedor. No colisiona con Odoo (5432)
+      # ni con etiquetas-db (5433).
+      - "5436:5432"
+    volumes:
+      - contenedores_pgdata:/var/lib/postgresql/data
+      # Se ejecuta una sola vez, al inicializar el volumen vacio.
+      - ./init:/docker-entrypoint-initdb.d:ro
+      # Certificado autofirmado para TLS (la app conecta cifrado).
+      - ./certs/server.crt:/etc/ssl/contenedores/server.crt:ro
+      - ./certs/server.key:/etc/ssl/contenedores/server.key:ro
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/ssl/contenedores/server.crt
+      - -c
+      - ssl_key_file=/etc/ssl/contenedores/server.key
+      # Vercel es serverless: muchas conexiones cortas. 100 alcanza de sobra.
+      - -c
+      - max_connections=100
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contenedores -d contenedores"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  contenedores_pgdata:

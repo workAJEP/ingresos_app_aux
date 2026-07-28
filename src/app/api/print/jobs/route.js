@@ -7,8 +7,7 @@
 // lista pública del middleware, y valida el token aquí mismo.
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { drainJobs, queueStatus } from '@/lib/queue';
-import { queueEnabled } from '@/lib/kv';
+import { drainJobs, queueStatus, queueEnabled } from '@/lib/queue';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,7 +27,7 @@ const noAutorizado = () => NextResponse.json({ error: 'no autorizado' }, { statu
 // Saca (RPOP atómico) y devuelve los trabajos pendientes. No-store para que
 // ningún CDN cachee la respuesta y reimprima trabajos ya bajados.
 async function pull() {
-  if (!queueEnabled()) return NextResponse.json({ jobs: [], error: 'KV no configurada' }, { status: 200 });
+  if (!queueEnabled()) return NextResponse.json({ jobs: [], error: 'cola no configurada (falta DATABASE_URL o KV)' }, { status: 200 });
   try {
     const jobs = await drainJobs();
     return NextResponse.json({ jobs }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
@@ -54,7 +53,7 @@ export async function POST(req) {
       return NextResponse.json(await queueStatus(), { status: 200 });
     } catch (err) {
       console.error('[print/jobs debug]', err instanceof Error ? err.message : err);
-      return NextResponse.json({ error: 'KV no accesible' }, { status: 200 });
+      return NextResponse.json({ error: 'cola no accesible' }, { status: 200 });
     }
   }
   return pull();
