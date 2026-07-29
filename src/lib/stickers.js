@@ -45,8 +45,10 @@ const numYardas = (v) => num(v, 2);
 
 // El largo del rollo se INGRESA EN METROS (campo `yardas` de Odoo trae metros),
 // pero la etiqueta imprime yardas: 1 m = 1.09361 yd (ej. 84.4 m -> 92.30 yd).
-const METROS_A_YARDAS = 1.09361;
-const metrosAYardas = (v) => numYardas((Number(v) || 0) * METROS_A_YARDAS);
+// La conversión vive en lib/unidades.js para que reporte/manifiesto/export
+// muestren exactamente lo mismo que el sticker.
+import { metrosAYardas as aYardas } from './unidades';
+const metrosAYardas = (v) => numYardas(aYardas(v));
 
 // Normaliza un rollo (registro Odoo `distefano.importacion.rollo`) a fila de
 // sticker, con el mapeo de `docs/Recepcion MP.xlsx`:

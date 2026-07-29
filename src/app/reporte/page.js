@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ClipboardList, Search, Download, Printer, RefreshCw, Warehouse, Truck, PackageCheck, Boxes } from 'lucide-react';
+import { ClipboardList, Search, Download, Printer, RefreshCw, Warehouse, Truck, PackageCheck, Boxes, ChevronLeft, ChevronRight } from 'lucide-react';
 import ImportacionPicker from '@/components/ImportacionPicker';
 import StatCard from '@/components/ui/StatCard';
 import Spinner from '@/components/ui/Spinner';
@@ -37,6 +37,9 @@ export default function ReportePage() {
   const [error, setError] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
+  // Paginación en cliente: 0 = ilimitado (todas las filas).
+  const [porPagina, setPorPagina] = useState(50);
+  const [pagina, setPagina] = useState(1);
 
   const cargar = useCallback(async () => {
     setError('');
@@ -71,6 +74,12 @@ export default function ReportePage() {
   });
 
   const totales = data?.totales;
+
+  const totalPaginas = porPagina ? Math.max(1, Math.ceil(filas.length / porPagina)) : 1;
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const visibles = porPagina
+    ? filas.slice((paginaActual - 1) * porPagina, paginaActual * porPagina)
+    : filas;
 
   // Totales de lo visible (la búsqueda filtra en cliente; si no hay filtro
   // coinciden con los del servidor).
@@ -158,14 +167,33 @@ export default function ReportePage() {
                 <Search className="w-3.5 h-3.5 text-blue-700 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
                 <input
                   value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
+                  onChange={(e) => {
+                    setBusqueda(e.target.value);
+                    setPagina(1);
+                  }}
                   placeholder="Buscar código, artículo, color, expediente…"
                   className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
                 />
               </div>
               <select
+                value={porPagina}
+                onChange={(e) => {
+                  setPorPagina(Number(e.target.value));
+                  setPagina(1);
+                }}
+                className="w-full sm:w-auto appearance-none bg-gray-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-blue-900 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+              >
+                <option value={10}>10 por página</option>
+                <option value={50}>50 por página</option>
+                <option value={100}>100 por página</option>
+                <option value={0}>Ilimitado</option>
+              </select>
+              <select
                 value={filtroEstado}
-                onChange={(e) => setFiltroEstado(e.target.value)}
+                onChange={(e) => {
+                  setFiltroEstado(e.target.value);
+                  setPagina(1);
+                }}
                 className="w-full sm:w-auto appearance-none bg-gray-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-blue-900 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
               >
                 <option value="">Todos los estados</option>
@@ -202,7 +230,7 @@ export default function ReportePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filas.map((r) => (
+                    {visibles.map((r) => (
                       <tr key={r.id} className="border-b border-slate-100 divide-x divide-slate-100 hover:bg-blue-50/40 transition-colors align-top">
                         <td className="px-3 py-2.5 font-mono tabular-nums text-blue-900 whitespace-nowrap">{r.codigo}</td>
                         <td className="px-3 py-2.5 text-blue-900 whitespace-nowrap">{r.pieza}</td>
@@ -247,6 +275,37 @@ export default function ReportePage() {
                 </table>
               )}
             </div>
+
+            {porPagina > 0 && filas.length > porPagina && (
+              <div className="no-print flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-t border-slate-100 bg-slate-50/60">
+                <p className="text-xs text-slate-500 tabular-nums">
+                  Mostrando {(paginaActual - 1) * porPagina + 1}–{Math.min(paginaActual * porPagina, filas.length)} de {filas.length} rollos
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPagina(paginaActual - 1)}
+                    disabled={paginaActual <= 1}
+                    className="flex items-center gap-1 bg-white border border-slate-200 text-blue-800 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+                    Anterior
+                  </button>
+                  <span className="text-xs text-slate-600 tabular-nums px-1.5">
+                    Página {paginaActual} de {totalPaginas}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPagina(paginaActual + 1)}
+                    disabled={paginaActual >= totalPaginas}
+                    className="flex items-center gap-1 bg-white border border-slate-200 text-blue-800 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    Siguiente
+                    <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

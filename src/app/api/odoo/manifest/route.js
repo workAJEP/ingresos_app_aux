@@ -7,6 +7,7 @@
 import { manifiestoData } from '@/lib/rollos';
 import { odooSearchRead } from '@/lib/odoo';
 import { respond, failOdoo } from '@/lib/http';
+import { metrosAYardas } from '@/lib/unidades';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,7 +45,7 @@ export async function GET(req) {
       const rows = rollos.map((r) => {
         peso += num(r.peso_neto);
         metros += num(r.metros);
-        yardas += num(r.yardas);
+        yardas += metrosAYardas(r.yardas); // `yardas` de Odoo trae metros
         return {
           pieza: r.pieza || '',
           codigoDist: r.cod_dist || '',
@@ -54,7 +55,7 @@ export async function GET(req) {
           codigo: r.barcode,
           pesoNeto: f2(num(r.peso_neto)),
           metros: f2(num(r.metros)),
-          yardas: f2(num(r.yardas)),
+          yardas: f2(metrosAYardas(r.yardas)),
         };
       });
       return respond({

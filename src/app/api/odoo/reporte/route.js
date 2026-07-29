@@ -4,6 +4,7 @@
 // `estado` opcional (bodega|transito|recibido) restringe a una sola fase.
 import { odooSearchRead } from '@/lib/odoo';
 import { respond, badRequest, failOdoo } from '@/lib/http';
+import { metrosAYardas } from '@/lib/unidades';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -68,7 +69,7 @@ export async function GET(req) {
     const rows = rollos.map((r) => {
       peso += Number(r.peso_neto) || 0;
       metros += Number(r.metros) || 0;
-      yardas += Number(r.yardas) || 0;
+      yardas += metrosAYardas(r.yardas); // `yardas` de Odoo trae metros
       if (porEstado[r.estado] !== undefined) porEstado[r.estado] += 1;
       const impId = Array.isArray(r.importacion_id) ? r.importacion_id[0] : r.importacion_id;
       return {
@@ -81,7 +82,7 @@ export async function GET(req) {
         composicion: r.composicion || '',
         pesoNeto: fmt2(r.peso_neto),
         metros: fmt2(r.metros),
-        yardas: fmt2(r.yardas),
+        yardas: fmt2(metrosAYardas(r.yardas)),
         estado: r.estado,
         expediente: Array.isArray(r.importacion_id) ? r.importacion_id[1] : '',
         proveedor: proveedorPorImp[impId] || '',

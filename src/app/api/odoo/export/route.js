@@ -9,6 +9,7 @@
 // `inventario`: export propio (no congelado por el plan) con todos los
 // campos del rollo, para auditoría/backup.
 import { odooSearchRead } from '@/lib/odoo';
+import { metrosAYardas } from '@/lib/unidades';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -84,7 +85,7 @@ export async function GET(req) {
           r.barcode,
           r.peso_neto,
           r.metros,
-          r.yardas,
+          metrosAYardas(r.yardas).toFixed(2), // `yardas` de Odoo trae metros
           r.estado,
           Array.isArray(r.importacion_id) ? r.importacion_id[1] : '',
           r.fecha_z14 || '',
@@ -116,7 +117,7 @@ export async function GET(req) {
           `${r.pieza} / ${totalesPorArticulo[key] || 1}`,
           r.barcode,
           r.peso_neto,
-          r.yardas,
+          metrosAYardas(r.yardas).toFixed(2), // igual que el sticker (Yards)
           'PRODUCCION',
           r.barcode,
         ];

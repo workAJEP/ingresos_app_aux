@@ -4,6 +4,7 @@
 // devuelven algo inesperado, se lanza para que la ruta lo traduzca a 503
 // (failOdoo) en vez de reenviar basura al frontend.
 import { odooKw, odooSearchRead, LOAD_TIMEOUT_MS } from './odoo';
+import { corrigeYardasProfundo } from './unidades';
 
 const MODEL = 'distefano.importacion.rollo';
 
@@ -58,6 +59,10 @@ function assertShape(res, label) {
   if (!res || typeof res !== 'object' || typeof res.status !== 'string') {
     throw new Error(`Respuesta inesperada de Odoo en ${label}: ${JSON.stringify(res)}`);
   }
+  // El campo `yardas` de Odoo trae metros; se convierte aquí para que TODAS
+  // las respuestas RPC (scan, tránsito, dashboard, recepción, manifiesto)
+  // muestren las mismas yardas que imprime el sticker.
+  corrigeYardasProfundo(res.detalles);
   return res;
 }
 

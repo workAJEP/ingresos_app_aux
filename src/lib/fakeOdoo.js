@@ -122,7 +122,9 @@ function seed() {
       barcode: `ROLLO${String(n).padStart(3, '0')}`, // 8 chars: >=7 y <10, sin recorte al escanear
       peso_neto: 10 + (n % 7),
       metros: 50 + (n % 20),
-      yardas: Number(((50 + (n % 20)) * 1.09361).toFixed(2)),
+      // Igual que el Odoo real: el campo `yardas` trae METROS (la conversión
+      // a yardas la hace la app en lib/unidades.js).
+      yardas: 50 + (n % 20),
       estado: 'pendiente',
       extra_info: '',
       fecha_z14: false,
