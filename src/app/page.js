@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { PackagePlus, LayoutDashboard, Boxes, FileText, LogOut } from 'lucide-react';
+import { PackagePlus, LayoutDashboard, Boxes, FileText, ClipboardList, LogOut } from 'lucide-react';
 import { apiFetch } from '@/components/useApi';
 import { useOperador } from '@/components/OperadorGate';
 
@@ -12,6 +12,7 @@ const TARJETAS = [
   { href: '/contenedores', icon: Boxes, titulo: 'Contenedores', descripcion: 'Expedientes y carga de packing list', accent: 'blue' },
   { href: '/dashboard', icon: LayoutDashboard, titulo: 'Dashboard', descripcion: 'Inventario en vivo', accent: 'blue' },
   { href: '/manifiesto', icon: FileText, titulo: 'Manifiesto', descripcion: 'Manifiesto por expediente', accent: 'blue' },
+  { href: '/reporte', icon: ClipboardList, titulo: 'Reporte', descripcion: 'Rollos escaneados con toda su información', accent: 'blue' },
 ];
 
 const ACCENTS = {

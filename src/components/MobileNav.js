@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { Home, PackagePlus, Boxes, FileText, LayoutDashboard } from 'lucide-react';
+import { Home, PackagePlus, Boxes, FileText, LayoutDashboard, ClipboardList } from 'lucide-react';
 
 const ITEMS = [
   { href: '/', match: (p) => p === '/', icon: Home, label: 'Inicio' },
@@ -16,6 +16,7 @@ const ITEMS = [
   { href: '/contenedores', match: (p) => p === '/contenedores', icon: Boxes, label: 'Conten.' },
   { href: '/manifiesto', match: (p) => p === '/manifiesto', icon: FileText, label: 'Manif.' },
   { href: '/dashboard', match: (p) => p === '/dashboard', icon: LayoutDashboard, label: 'Panel' },
+  { href: '/reporte', match: (p) => p === '/reporte', icon: ClipboardList, label: 'Reporte' },
 ];
 
 function MobileNavInner() {
