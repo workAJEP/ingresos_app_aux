@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, Flashlight, FlashlightOff, Loader2 } from 'lucide-react';
 
 const SCAN_TTL_MS = 3000;
-const DEBOUNCE_MS = 1200;
+// Lapso mínimo entre UN scan y el siguiente (cualquier código): 3 s, para que
+// el operario tenga tiempo de mover el lector al siguiente rollo sin dobles.
+const DEBOUNCE_MS = 3000;
 
 // Formatos 1D (+ QR por si acaso). El barcode del rollo es Code128/Code39
 // alfanumérico (ej. "1B10697899"); los demás se incluyen por robustez.
