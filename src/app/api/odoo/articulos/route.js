@@ -20,6 +20,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX = 5000;
+// product.category raíz "Telas" — mismo árbol que /api/odoo/productos.
+const TELAS_CATEG_ID = Number(process.env.ODOO_TELAS_CATEG_ID || 368);
 
 // Productos de las ÓRDENES DE COMPRA del expediente (purchase.order tiene
 // importacion_id en el módulo distefano_importaciones). Son la fuente
@@ -48,9 +50,14 @@ async function productosDeOC(importacionId) {
       ),
     ];
     if (!prodIds.length) return [];
+    // Solo productos del árbol de categorías "Telas": las OC también traen
+    // botones, hilos, fletes, etc., que no son válidos como Código de tela.
     const productos = await odooSearchRead(
       'product.product',
-      [['id', 'in', prodIds]],
+      [
+        ['id', 'in', prodIds],
+        ['categ_id', 'child_of', TELAS_CATEG_ID],
+      ],
       ['id', 'default_code', 'name', 'tipo', 'attribute_value_ids'],
       prodIds.length,
     );
