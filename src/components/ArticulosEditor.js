@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { X, Tags } from 'lucide-react';
+import { X, Tags, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/components/useApi';
 import Spinner from '@/components/ui/Spinner';
 import ErrorBanner from '@/components/ui/ErrorBanner';
@@ -72,46 +72,44 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
   // así el inline style no rompe el apilado de 1 columna en móvil.
   const gridTemplate = `${cols.nombre}px ${cols.codigo}px ${cols.descripcion}px ${cols.color}px ${cols.composicion}px 80px`;
 
-  useEffect(() => {
-    if (!open || !importacionId) return;
-
-    let cancelado = false;
+  // Carga (o recarga) los artículos del expediente. La usa el efecto de
+  // apertura y el botón "Revertir": revertir = descartar lo editado en el
+  // formulario y volver a lo que está guardado en Odoo.
+  const cargarArticulos = async () => {
     setCargando(true);
     setError('');
     setMsg('');
+    const res = await apiFetch(`/api/odoo/articulos?importacionId=${importacionId}`);
+    if (res.status === 'error') {
+      setError(res.msg);
+      setArticulos([]);
+      setOcProductos([]);
+    } else {
+      const lista = res.detalles?.articulos || [];
+      setOcProductos(res.detalles?.ocProductos || []);
+      setArticulos(
+        lista.map((a) => ({
+          nombreOrig: a.nombre || '',
+          colorOrig: a.color || '',
+          nombre: a.nombre || '',
+          codigo: a.codigo || '',
+          descripcion: '',
+          // El color del packing list es el CÓDIGO del proveedor (D1000, 58L):
+          // no sirve para la etiqueta. Se deja el campo vacío para que el
+          // usuario elija el color legible del catálogo Distefano.
+          color: esCodigoColor(a.color) ? '' : a.color || '',
+          composicion: a.composicion || '',
+          rollos: a.rollos || 0,
+        })),
+      );
+    }
+    setCargando(false);
+  };
 
-    (async () => {
-      const res = await apiFetch(`/api/odoo/articulos?importacionId=${importacionId}`);
-      if (cancelado) return;
-      if (res.status === 'error') {
-        setError(res.msg);
-        setArticulos([]);
-        setOcProductos([]);
-      } else {
-        const lista = res.detalles?.articulos || [];
-        setOcProductos(res.detalles?.ocProductos || []);
-        setArticulos(
-          lista.map((a) => ({
-            nombreOrig: a.nombre || '',
-            colorOrig: a.color || '',
-            nombre: a.nombre || '',
-            codigo: a.codigo || '',
-            descripcion: '',
-            // El color del packing list es el CÓDIGO del proveedor (D1000, 58L):
-            // no sirve para la etiqueta. Se deja el campo vacío para que el
-            // usuario elija el color legible del catálogo Distefano.
-            color: esCodigoColor(a.color) ? '' : a.color || '',
-            composicion: a.composicion || '',
-            rollos: a.rollos || 0,
-          })),
-        );
-      }
-      setCargando(false);
-    })();
-
-    return () => {
-      cancelado = true;
-    };
+  useEffect(() => {
+    if (!open || !importacionId) return;
+    cargarArticulos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, importacionId]);
 
   if (!open) return null;
@@ -179,14 +177,26 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
             <Tags className="w-5 h-5 text-blue-700" aria-hidden="true" />
             Datos de etiqueta{expedienteName ? ` · ${expedienteName}` : ''}
           </h3>
-          <button
-            type="button"
-            onClick={cerrar}
-            aria-label="Cerrar"
-            className="p-1.5 rounded text-blue-700 hover:bg-blue-50 transition-colors"
-          >
-            <X className="w-4 h-4" aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={cargarArticulos}
+              disabled={cargando || guardando}
+              title="Descarta lo editado y vuelve a los valores guardados"
+              className="flex items-center gap-1.5 text-sm font-semibold text-blue-800 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors disabled:opacity-50"
+            >
+              <RotateCcw className="w-4 h-4" aria-hidden="true" />
+              Revertir
+            </button>
+            <button
+              type="button"
+              onClick={cerrar}
+              aria-label="Cerrar"
+              className="p-1.5 rounded text-blue-700 hover:bg-blue-50 transition-colors"
+            >
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         <p className="text-sm text-slate-500 mb-4 shrink-0">
