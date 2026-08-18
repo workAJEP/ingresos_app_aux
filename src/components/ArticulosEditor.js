@@ -48,7 +48,8 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
   const [ocProductos, setOcProductos] = useState([]);
   // Columnas redimensionables: se arrastra el borde derecho de cada encabezado.
   const [cols, setCols] = useState(COLS_INICIAL);
-  const [menuRevertir, setMenuRevertir] = useState(false);
+  // Filas marcadas (checkbox) para revertir; vacío = revertir todo.
+  const [seleccion, setSeleccion] = useState(new Set());
   const dragRef = useRef(null);
   // Snapshot de los artículos tal como se cargaron (estado inicial del modal).
   const inicialRef = useRef([]);
@@ -73,7 +74,7 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
 
   // La misma plantilla de grid para encabezado y filas, vía CSS var (--cols-et):
   // así el inline style no rompe el apilado de 1 columna en móvil.
-  const gridTemplate = `${cols.nombrePacking}px ${cols.nombre}px ${cols.codigo}px ${cols.descripcion}px ${cols.color}px ${cols.composicion}px 80px`;
+  const gridTemplate = `32px ${cols.nombrePacking}px ${cols.nombre}px ${cols.codigo}px ${cols.descripcion}px ${cols.color}px ${cols.composicion}px 80px`;
 
   // Carga (o recarga) los artículos del expediente. La usa el efecto de
   // apertura y el botón "Revertir": revertir = descartar lo editado en el
@@ -113,15 +114,30 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
     setCargando(false);
   };
 
-  const revertirTodo = () => {
-    setArticulos(inicialRef.current.map((m) => ({ ...m })));
-    setMenuRevertir(false);
+  // Revertir por CHECKBOX: si hay filas marcadas revierte solo esas; sin
+  // ninguna marcada revierte todo. Después limpia la selección.
+  const revertir = () => {
+    setArticulos((prev) =>
+      prev.map((a, i) => {
+        const ini = inicialRef.current[i];
+        if (!ini) return a;
+        return seleccion.size === 0 || seleccion.has(i) ? { ...ini } : a;
+      }),
+    );
+    setSeleccion(new Set());
   };
 
-  const revertirFila = (idx) => {
-    const ini = inicialRef.current[idx];
-    if (ini) setArticulos((prev) => prev.map((a, i) => (i === idx ? { ...ini } : a)));
-    setMenuRevertir(false);
+  const toggleSeleccion = (idx) => {
+    setSeleccion((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleTodas = () => {
+    setSeleccion((prev) => (prev.size === articulos.length ? new Set() : new Set(articulos.map((_, i) => i))));
   };
 
   useEffect(() => {
@@ -196,43 +212,16 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
             Datos de etiqueta{expedienteName ? ` · ${expedienteName}` : ''}
           </h3>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setMenuRevertir((v) => !v)}
-                disabled={cargando || guardando}
-                title="Descarta lo editado y vuelve al estado inicial"
-                className="flex items-center gap-1.5 text-sm font-semibold text-blue-800 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors disabled:opacity-50"
-              >
-                <RotateCcw className="w-4 h-4" aria-hidden="true" />
-                Revertir
-              </button>
-              {menuRevertir && (
-                <div className="absolute right-0 top-full mt-1 z-40 w-72 max-h-80 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
-                  <button
-                    type="button"
-                    onClick={revertirTodo}
-                    className="w-full text-left px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-50"
-                  >
-                    Revertir todo
-                  </button>
-                  <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase text-slate-400 border-t border-slate-100">
-                    O solo una fila
-                  </p>
-                  {articulos.map((a, i) => (
-                    <button
-                      key={`${a.nombreOrig}|${a.colorOrig}`}
-                      type="button"
-                      onClick={() => revertirFila(i)}
-                      className="w-full text-left px-3 py-1.5 text-sm text-blue-900 hover:bg-blue-50 truncate"
-                      title={a.nombrePacking}
-                    >
-                      {a.nombrePacking || '(sin nombre)'}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={revertir}
+              disabled={cargando || guardando}
+              title="Marca filas con el checkbox para revertir solo esas; sin marcar, revierte todo"
+              className="flex items-center gap-1.5 text-sm font-semibold text-blue-800 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors disabled:opacity-50"
+            >
+              <RotateCcw className="w-4 h-4" aria-hidden="true" />
+              {seleccion.size > 0 ? `Revertir (${seleccion.size})` : 'Revertir todo'}
+            </button>
             <button
               type="button"
               onClick={cerrar}
@@ -264,6 +253,15 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
               {/* Encabezado solo visible en sm+ (vista tipo tabla). Cada columna
                   se redimensiona arrastrando su borde derecho. */}
               <div className="hidden sm:grid sm:grid-cols-[var(--cols-et)] gap-2 px-1 text-[11px] font-semibold uppercase text-blue-700 sm:w-max sm:min-w-full select-none">
+                <span className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={articulos.length > 0 && seleccion.size === articulos.length}
+                    onChange={toggleTodas}
+                    title="Marcar/desmarcar todas para revertir"
+                    className="w-4 h-4 accent-blue-800 cursor-pointer"
+                  />
+                </span>
                 {[
                   ['nombrePacking', 'Nombre Packing'],
                   ['nombre', 'Nombre'],
@@ -292,6 +290,8 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
                 <ArticuloRow
                   key={`${a.nombreOrig}|${a.colorOrig}`}
                   articulo={a}
+                  seleccionado={seleccion.has(idx)}
+                  onToggleSeleccion={() => toggleSeleccion(idx)}
                   onChange={(cambios) => actualizarArticulo(idx, cambios)}
                   ocProductos={ocProductos}
                   // Códigos ya elegidos en OTRAS filas: desaparecen de las
@@ -339,7 +339,7 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
 // rollos (más frecuentes primero). Los desplegables son propios (no <datalist>
 // nativo, que se ve negro y sin estilo): si no hay match, el usuario escribe
 // libremente y eso es lo que se guarda — Odoo es solo la sugerencia.
-function ArticuloRow({ articulo: a, onChange, ocProductos = [], codigosUsados = '' }) {
+function ArticuloRow({ articulo: a, onChange, ocProductos = [], codigosUsados = '', seleccionado = false, onToggleSeleccion }) {
   const [productos, setProductos] = useState([]);
   const [colores, setColores] = useState([]);
   const prodTimer = useRef(null);
@@ -412,7 +412,23 @@ function ArticuloRow({ articulo: a, onChange, ocProductos = [], codigosUsados = 
   };
 
   return (
-    <div className="border border-slate-200 rounded-lg p-3 sm:p-2 grid grid-cols-1 sm:grid-cols-[var(--cols-et)] gap-2 sm:items-center sm:w-max sm:min-w-full">
+    <div
+      className={`border rounded-lg p-3 sm:p-2 grid grid-cols-1 sm:grid-cols-[var(--cols-et)] gap-2 sm:items-center sm:w-max sm:min-w-full ${
+        seleccionado ? 'border-blue-400 bg-blue-50/40' : 'border-slate-200'
+      }`}
+    >
+      {/* Checkbox: marca la fila para "Revertir" (solo las marcadas). */}
+      <label className="flex items-center sm:justify-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={seleccionado}
+          onChange={onToggleSeleccion}
+          title="Marcar para revertir esta fila"
+          className="w-4 h-4 accent-blue-800 cursor-pointer"
+        />
+        <span className="text-[11px] font-semibold uppercase text-blue-700 sm:hidden">Revertir esta fila</span>
+      </label>
+
       {/* Nombre del packing list: FIJO, nunca cambia (referencia del grupo). */}
       <div className="min-h-[48px] flex items-center">
         <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1 sm:hidden mr-2">Nombre Packing</span>
