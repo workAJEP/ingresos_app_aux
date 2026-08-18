@@ -33,7 +33,7 @@ function esCodigoColor(s) {
  *      colorOrig, nombre, codigo, color, composicion }] }
  */
 // Anchos iniciales (px) de las columnas redimensionables del modal.
-const COLS_INICIAL = { nombre: 200, codigo: 210, descripcion: 240, color: 170, composicion: 240 };
+const COLS_INICIAL = { nombrePacking: 190, nombre: 180, codigo: 200, descripcion: 240, color: 160, composicion: 220 };
 const COL_MIN = 130;
 const COL_MAX = 640;
 
@@ -48,7 +48,10 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
   const [ocProductos, setOcProductos] = useState([]);
   // Columnas redimensionables: se arrastra el borde derecho de cada encabezado.
   const [cols, setCols] = useState(COLS_INICIAL);
+  const [menuRevertir, setMenuRevertir] = useState(false);
   const dragRef = useRef(null);
+  // Snapshot de los artículos tal como se cargaron (estado inicial del modal).
+  const inicialRef = useRef([]);
 
   const startResize = (key) => (e) => {
     e.preventDefault();
@@ -70,7 +73,7 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
 
   // La misma plantilla de grid para encabezado y filas, vía CSS var (--cols-et):
   // así el inline style no rompe el apilado de 1 columna en móvil.
-  const gridTemplate = `${cols.nombre}px ${cols.codigo}px ${cols.descripcion}px ${cols.color}px ${cols.composicion}px 80px`;
+  const gridTemplate = `${cols.nombrePacking}px ${cols.nombre}px ${cols.codigo}px ${cols.descripcion}px ${cols.color}px ${cols.composicion}px 80px`;
 
   // Carga (o recarga) los artículos del expediente. La usa el efecto de
   // apertura y el botón "Revertir": revertir = descartar lo editado en el
@@ -84,26 +87,41 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
       setError(res.msg);
       setArticulos([]);
       setOcProductos([]);
+      inicialRef.current = [];
     } else {
       const lista = res.detalles?.articulos || [];
       setOcProductos(res.detalles?.ocProductos || []);
-      setArticulos(
-        lista.map((a) => ({
-          nombreOrig: a.nombre || '',
-          colorOrig: a.color || '',
-          nombre: a.nombre || '',
-          codigo: a.codigo || '',
-          descripcion: '',
-          // El color del packing list es el CÓDIGO del proveedor (D1000, 58L):
-          // no sirve para la etiqueta. Se deja el campo vacío para que el
-          // usuario elija el color legible del catálogo Distefano.
-          color: esCodigoColor(a.color) ? '' : a.color || '',
-          composicion: a.composicion || '',
-          rollos: a.rollos || 0,
-        })),
-      );
+      const mapeados = lista.map((a) => ({
+        nombreOrig: a.nombre || '',
+        colorOrig: a.color || '',
+        // Nombre del PACKING LIST: no cambia nunca (columna informativa fija).
+        nombrePacking: a.nombre || '',
+        nombre: a.nombre || '',
+        codigo: a.codigo || '',
+        descripcion: '',
+        // El color del packing list es el CÓDIGO del proveedor (D1000, 58L):
+        // no sirve para la etiqueta. Se deja el campo vacío para que el
+        // usuario elija el color legible del catálogo Distefano.
+        color: esCodigoColor(a.color) ? '' : a.color || '',
+        composicion: a.composicion || '',
+        rollos: a.rollos || 0,
+      }));
+      setArticulos(mapeados);
+      // Snapshot del estado inicial para Revertir (todo o una fila).
+      inicialRef.current = mapeados.map((m) => ({ ...m }));
     }
     setCargando(false);
+  };
+
+  const revertirTodo = () => {
+    setArticulos(inicialRef.current.map((m) => ({ ...m })));
+    setMenuRevertir(false);
+  };
+
+  const revertirFila = (idx) => {
+    const ini = inicialRef.current[idx];
+    if (ini) setArticulos((prev) => prev.map((a, i) => (i === idx ? { ...ini } : a)));
+    setMenuRevertir(false);
   };
 
   useEffect(() => {
@@ -178,16 +196,43 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
             Datos de etiqueta{expedienteName ? ` · ${expedienteName}` : ''}
           </h3>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={cargarArticulos}
-              disabled={cargando || guardando}
-              title="Descarta lo editado y vuelve a los valores guardados"
-              className="flex items-center gap-1.5 text-sm font-semibold text-blue-800 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors disabled:opacity-50"
-            >
-              <RotateCcw className="w-4 h-4" aria-hidden="true" />
-              Revertir
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuRevertir((v) => !v)}
+                disabled={cargando || guardando}
+                title="Descarta lo editado y vuelve al estado inicial"
+                className="flex items-center gap-1.5 text-sm font-semibold text-blue-800 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                Revertir
+              </button>
+              {menuRevertir && (
+                <div className="absolute right-0 top-full mt-1 z-40 w-72 max-h-80 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+                  <button
+                    type="button"
+                    onClick={revertirTodo}
+                    className="w-full text-left px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-50"
+                  >
+                    Revertir todo
+                  </button>
+                  <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase text-slate-400 border-t border-slate-100">
+                    O solo una fila
+                  </p>
+                  {articulos.map((a, i) => (
+                    <button
+                      key={`${a.nombreOrig}|${a.colorOrig}`}
+                      type="button"
+                      onClick={() => revertirFila(i)}
+                      className="w-full text-left px-3 py-1.5 text-sm text-blue-900 hover:bg-blue-50 truncate"
+                      title={a.nombrePacking}
+                    >
+                      {a.nombrePacking || '(sin nombre)'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={cerrar}
@@ -220,6 +265,7 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
                   se redimensiona arrastrando su borde derecho. */}
               <div className="hidden sm:grid sm:grid-cols-[var(--cols-et)] gap-2 px-1 text-[11px] font-semibold uppercase text-blue-700 sm:w-max sm:min-w-full select-none">
                 {[
+                  ['nombrePacking', 'Nombre Packing'],
                   ['nombre', 'Nombre'],
                   ['codigo', 'Código de tela'],
                   ['descripcion', 'Descripción'],
@@ -320,14 +366,15 @@ function ArticuloRow({ articulo: a, onChange, ocProductos = [], codigosUsados = 
               String(p.nombreCompleto || p.nombre || '').toLowerCase().includes(ql),
           )
         : disponibles;
-      if (filtrados.length || !ql) {
-        setProductos(filtrados);
-        return undefined;
-      }
-      // sin match en la OC → cae a la búsqueda libre de abajo
+      // Con OC las sugerencias son SOLO de la OC: aunque el código/descripción
+      // exista en el catálogo, si no está en la orden de compra NO se sugiere
+      // (evita equivocaciones). Sin match la lista queda vacía; siempre se
+      // puede escribir el código a mano.
+      setProductos(filtrados);
+      return undefined;
     }
 
-    // 2) Sin OC (o sin match): búsqueda libre en el catálogo Telas.
+    // 2) Sin OC en el expediente: búsqueda libre en el catálogo Telas.
     if (q.length < MIN_CHARS_PRODUCTO) {
       setProductos([]);
       return undefined;
@@ -366,6 +413,14 @@ function ArticuloRow({ articulo: a, onChange, ocProductos = [], codigosUsados = 
 
   return (
     <div className="border border-slate-200 rounded-lg p-3 sm:p-2 grid grid-cols-1 sm:grid-cols-[var(--cols-et)] gap-2 sm:items-center sm:w-max sm:min-w-full">
+      {/* Nombre del packing list: FIJO, nunca cambia (referencia del grupo). */}
+      <div className="min-h-[48px] flex items-center">
+        <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1 sm:hidden mr-2">Nombre Packing</span>
+        <p className="text-xs leading-snug text-slate-700 font-medium" title={a.nombrePacking || ''}>
+          {a.nombrePacking}
+        </p>
+      </div>
+
       <Campo label="Nombre" value={a.nombre} onChange={(v) => onChange({ nombre: v })} placeholder="JD100M" />
 
       <Autocompletar
@@ -378,7 +433,8 @@ function ArticuloRow({ articulo: a, onChange, ocProductos = [], codigosUsados = 
         render={(p) => (
           <>
             {p.codigo && <span className="font-semibold text-blue-900">{p.codigo}</span>}
-            <span className="text-slate-500 block truncate text-xs">{p.nombreCompleto || p.nombre}</span>
+            {/* Descripción COMPLETA (sin truncar): es lo que permite distinguir telas parecidas */}
+            <span className="text-slate-600 block whitespace-normal break-words text-xs">{p.nombreCompleto || p.nombre}</span>
           </>
         )}
       />
@@ -464,7 +520,8 @@ function Autocompletar({ label, value, onChange, placeholder, opciones, onElegir
         className="w-full min-h-[48px] px-3 text-base sm:text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
       />
       {abierto && opciones.length > 0 && (
-        <ul className="absolute left-0 right-0 top-full mt-1 z-30 max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+        {/* Más ancho que el input para que la descripción completa quepa a lo largo */}
+        <ul className="absolute left-0 top-full mt-1 z-30 min-w-full w-[460px] max-w-[80vw] max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
           {opciones.map((op, i) => (
             <li key={op.id ?? op}>
               <button
