@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ClipboardList, Search, Download, Printer, RefreshCw, Warehouse, Truck, PackageCheck, Boxes, ChevronLeft, ChevronRight } from 'lucide-react';
 import ImportacionPicker from '@/components/ImportacionPicker';
 import StatCard from '@/components/ui/StatCard';
@@ -111,6 +112,13 @@ export default function ReportePage() {
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           <ImportacionPicker value={importacionId} onChange={setImportacionId} />
+          <Link
+            href="/manifiesto-envio"
+            className="flex items-center justify-center gap-1.5 bg-white border border-slate-200 text-blue-800 hover:bg-slate-50 text-sm font-semibold px-3 py-2 rounded-lg transition-colors"
+          >
+            <Truck className="w-4 h-4" aria-hidden="true" />
+            Crear manifiesto de envío
+          </Link>
           <button
             type="button"
             onClick={cargar}
