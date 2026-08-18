@@ -520,7 +520,7 @@ function Autocompletar({ label, value, onChange, placeholder, opciones, onElegir
         className="w-full min-h-[48px] px-3 text-base sm:text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
       />
       {abierto && opciones.length > 0 && (
-        {/* Más ancho que el input para que la descripción completa quepa a lo largo */}
+        // Más ancho que el input para que la descripción completa quepa a lo largo.
         <ul className="absolute left-0 top-full mt-1 z-30 min-w-full w-[460px] max-w-[80vw] max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
           {opciones.map((op, i) => (
             <li key={op.id ?? op}>
