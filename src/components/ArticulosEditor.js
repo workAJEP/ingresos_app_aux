@@ -32,12 +32,42 @@ function esCodigoColor(s) {
  * POST /api/odoo/articulos  { importacionId, articulos: [{ nombreOrig,
  *      colorOrig, nombre, codigo, color, composicion }] }
  */
+// Anchos iniciales (px) de las columnas redimensionables del modal.
+const COLS_INICIAL = { nombre: 220, codigo: 230, color: 180, composicion: 260 };
+const COL_MIN = 130;
+const COL_MAX = 640;
+
 export default function ArticulosEditor({ open, importacionId, expedienteName, onClose, onSaved }) {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [articulos, setArticulos] = useState([]); // [{ nombreOrig, colorOrig, nombre, codigo, color, composicion, rollos }]
+  // Columnas redimensionables: se arrastra el borde derecho de cada encabezado.
+  const [cols, setCols] = useState(COLS_INICIAL);
+  const dragRef = useRef(null);
+
+  const startResize = (key) => (e) => {
+    e.preventDefault();
+    dragRef.current = { key, startX: e.clientX, startW: cols[key] };
+    const move = (ev) => {
+      const d = ev.clientX - dragRef.current.startX;
+      setCols((prev) => ({
+        ...prev,
+        [dragRef.current.key]: Math.max(COL_MIN, Math.min(COL_MAX, dragRef.current.startW + d)),
+      }));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  // La misma plantilla de grid para encabezado y filas, vía CSS var (--cols-et):
+  // así el inline style no rompe el apilado de 1 columna en móvil.
+  const gridTemplate = `${cols.nombre}px ${cols.codigo}px ${cols.color}px ${cols.composicion}px 80px`;
 
   useEffect(() => {
     if (!open || !importacionId) return;
@@ -136,7 +166,7 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
       <div
         role="dialog"
         aria-modal="true"
-        className="bg-white rounded-xl border border-slate-200 p-6 w-full max-w-3xl shadow-xl max-h-[90vh] flex flex-col"
+        className="bg-white rounded-xl border border-slate-200 p-6 w-[96vw] max-w-[1250px] shadow-xl max-h-[92vh] flex flex-col"
       >
         <div className="flex items-center justify-between mb-2 shrink-0">
           <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
@@ -161,7 +191,7 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
         {error && <ErrorBanner message={error} className="mb-3 shrink-0" />}
         {msg && <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-3 shrink-0">{msg}</p>}
 
-        <div className="flex-1 overflow-y-auto max-h-[80vh] -mx-1 px-1">
+        <div className="flex-1 overflow-y-auto overflow-x-auto -mx-1 px-1" style={{ '--cols-et': gridTemplate }}>
           {cargando ? (
             <div className="flex justify-center py-16">
               <Spinner size="lg" />
@@ -170,12 +200,28 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
             <EmptyState title="Sin artículos" description="Este expediente no tiene rollos cargados." />
           ) : (
             <div className="space-y-3">
-              {/* Encabezado solo visible en sm+ (vista tipo tabla) */}
-              <div className="hidden sm:grid sm:grid-cols-[1.1fr_1.3fr_1fr_1.4fr_0.7fr] gap-2 px-1 text-[11px] font-semibold uppercase text-blue-700">
-                <span>Nombre</span>
-                <span>Código de tela</span>
-                <span>Color</span>
-                <span>Composición</span>
+              {/* Encabezado solo visible en sm+ (vista tipo tabla). Cada columna
+                  se redimensiona arrastrando su borde derecho. */}
+              <div className="hidden sm:grid sm:grid-cols-[var(--cols-et)] gap-2 px-1 text-[11px] font-semibold uppercase text-blue-700 sm:w-max sm:min-w-full select-none">
+                {[
+                  ['nombre', 'Nombre'],
+                  ['codigo', 'Código de tela'],
+                  ['color', 'Color'],
+                  ['composicion', 'Composición'],
+                ].map(([key, label]) => (
+                  <span key={key} className="relative pr-3">
+                    {label}
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      onPointerDown={startResize(key)}
+                      title="Arrastra para cambiar el ancho"
+                      className="absolute -right-1 top-1/2 -translate-y-1/2 h-5 w-2.5 cursor-col-resize flex items-center justify-center"
+                    >
+                      <span className="h-full w-px bg-slate-300" />
+                    </span>
+                  </span>
+                ))}
                 <span className="text-right">Rollos</span>
               </div>
 
@@ -263,7 +309,7 @@ function ArticuloRow({ articulo: a, onChange }) {
   };
 
   return (
-    <div className="border border-slate-200 rounded-lg p-3 sm:p-2 grid grid-cols-1 sm:grid-cols-[1.1fr_1.3fr_1fr_1.4fr_0.7fr] gap-2 sm:items-center">
+    <div className="border border-slate-200 rounded-lg p-3 sm:p-2 grid grid-cols-1 sm:grid-cols-[var(--cols-et)] gap-2 sm:items-center sm:w-max sm:min-w-full">
       <Campo label="Nombre" value={a.nombre} onChange={(v) => onChange({ nombre: v })} placeholder="JD100M" />
 
       <Autocompletar
