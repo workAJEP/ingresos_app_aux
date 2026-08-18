@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Boxes, PlusCircle, RefreshCw, Tags } from 'lucide-react';
+import { Boxes, PlusCircle, RefreshCw, Tags, Trash2 } from 'lucide-react';
 import UploadContenedor from '@/components/UploadContenedor';
 import PrintStickerButton from '@/components/PrintStickerButton';
 import ArticulosEditor from '@/components/ArticulosEditor';
@@ -89,7 +89,7 @@ export default function ContenedoresPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {importaciones.map((imp) => (
-            <ExpedienteCard key={imp.id} imp={imp} onEditarArticulos={setArticulosEditor} />
+            <ExpedienteCard key={imp.id} imp={imp} onEditarArticulos={setArticulosEditor} onDeleted={cargar} />
           ))}
         </div>
       )}
@@ -113,8 +113,27 @@ export default function ContenedoresPage() {
   );
 }
 
-function ExpedienteCard({ imp, onEditarArticulos }) {
+function ExpedienteCard({ imp, onEditarArticulos, onDeleted }) {
+  const [eliminando, setEliminando] = useState(false);
+  const [msgEliminar, setMsgEliminar] = useState('');
   const total = imp.rollosTotal || 0;
+
+  // Elimina TODOS los rollos del expediente (vuelve al estado inicial, antes
+  // de la subida del packing list). Doble confirmación: es irreversible.
+  const eliminarRollos = async () => {
+    const ok = window.confirm(
+      `¿Eliminar los ${total} rollo(s) cargados a ${imp.name}?\n\n` +
+        'El expediente vuelve al estado inicial (sin rollos, sin escaneos, sin datos de etiqueta). ' +
+        'Esta acción NO se puede deshacer.',
+    );
+    if (!ok) return;
+    setEliminando(true);
+    setMsgEliminar('');
+    const res = await apiFetch(`/api/odoo/rollos?importacionId=${imp.id}`, { method: 'DELETE' });
+    setEliminando(false);
+    setMsgEliminar(res.msg || '');
+    if (res.status === 'success') onDeleted?.();
+  };
   const segmentos = [
     { valor: imp.rollosRecibidos, color: 'bg-green-600' },
     { valor: imp.rollosTransito, color: 'bg-amber-500' },
@@ -165,8 +184,19 @@ function ExpedienteCard({ imp, onEditarArticulos }) {
             <Tags className="w-4 h-4" aria-hidden="true" />
             Datos de etiqueta
           </button>
+          <button
+            type="button"
+            onClick={eliminarRollos}
+            disabled={eliminando}
+            title="Eliminar todos los rollos del expediente (vuelve al estado inicial de subida)"
+            className="flex items-center justify-center gap-1.5 min-h-[52px] w-full sm:w-auto px-4 bg-white border border-red-200 text-red-700 hover:bg-red-50 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="w-4 h-4" aria-hidden="true" />
+            {eliminando ? 'Eliminando…' : 'Eliminar rollos'}
+          </button>
         </div>
       )}
+      {msgEliminar && <p className="text-xs text-slate-600">{msgEliminar}</p>}
     </div>
   );
 }

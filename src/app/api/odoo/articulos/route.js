@@ -14,11 +14,52 @@
 //   -> escribe esos valores en TODOS los rollos del grupo.
 import { odooSearchRead, odooKw } from '@/lib/odoo';
 import { respond, badRequest, failOdoo } from '@/lib/http';
+import { enriquecerProductos } from '@/lib/telas';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX = 5000;
+
+// Productos de las ÓRDENES DE COMPRA del expediente (purchase.order tiene
+// importacion_id en el módulo distefano_importaciones). Son la fuente
+// preferida del "Código de tela": el editor los sugiere primero y va
+// descartando los ya usados en otros artículos. Si el expediente no tiene OC
+// (o el modelo no está disponible, p.ej. ODOO_FAKE), devuelve [].
+async function productosDeOC(importacionId) {
+  try {
+    const ordenes = await odooSearchRead(
+      'purchase.order',
+      [['importacion_id', '=', importacionId]],
+      ['id', 'order_line'],
+      50,
+    );
+    const lineIds = [...new Set(ordenes.flatMap((o) => o.order_line || []))];
+    if (!lineIds.length) return [];
+    const lineas = await odooSearchRead(
+      'purchase.order.line',
+      [['id', 'in', lineIds]],
+      ['id', 'product_id'],
+      lineIds.length,
+    );
+    const prodIds = [
+      ...new Set(
+        lineas.map((l) => (Array.isArray(l.product_id) ? l.product_id[0] : l.product_id)).filter(Boolean),
+      ),
+    ];
+    if (!prodIds.length) return [];
+    const productos = await odooSearchRead(
+      'product.product',
+      [['id', 'in', prodIds]],
+      ['id', 'default_code', 'name', 'tipo', 'attribute_value_ids'],
+      prodIds.length,
+    );
+    return await enriquecerProductos(productos);
+  } catch (e) {
+    console.error('[articulos/oc]', e instanceof Error ? e.message : e);
+    return [];
+  }
+}
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
@@ -50,10 +91,12 @@ export async function GET(req) {
       grupos.get(clave).rollos++;
     }
 
+    const ocProductos = await productosDeOC(importacionId);
+
     return respond({
       status: 'success',
       msg: '',
-      detalles: { articulos: [...grupos.values()] },
+      detalles: { articulos: [...grupos.values()], ocProductos },
     });
   } catch (err) {
     return failOdoo(err);

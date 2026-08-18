@@ -33,7 +33,7 @@ function esCodigoColor(s) {
  *      colorOrig, nombre, codigo, color, composicion }] }
  */
 // Anchos iniciales (px) de las columnas redimensionables del modal.
-const COLS_INICIAL = { nombre: 220, codigo: 230, color: 180, composicion: 260 };
+const COLS_INICIAL = { nombre: 200, codigo: 210, descripcion: 240, color: 170, composicion: 240 };
 const COL_MIN = 130;
 const COL_MAX = 640;
 
@@ -42,7 +42,10 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
-  const [articulos, setArticulos] = useState([]); // [{ nombreOrig, colorOrig, nombre, codigo, color, composicion, rollos }]
+  const [articulos, setArticulos] = useState([]); // [{ nombreOrig, colorOrig, nombre, codigo, descripcion, color, composicion, rollos }]
+  // Productos de las ÓRDENES DE COMPRA del expediente: fuente preferida del
+  // Código de tela. Los ya elegidos en otra fila desaparecen de la lista.
+  const [ocProductos, setOcProductos] = useState([]);
   // Columnas redimensionables: se arrastra el borde derecho de cada encabezado.
   const [cols, setCols] = useState(COLS_INICIAL);
   const dragRef = useRef(null);
@@ -67,7 +70,7 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
 
   // La misma plantilla de grid para encabezado y filas, vía CSS var (--cols-et):
   // así el inline style no rompe el apilado de 1 columna en móvil.
-  const gridTemplate = `${cols.nombre}px ${cols.codigo}px ${cols.color}px ${cols.composicion}px 80px`;
+  const gridTemplate = `${cols.nombre}px ${cols.codigo}px ${cols.descripcion}px ${cols.color}px ${cols.composicion}px 80px`;
 
   useEffect(() => {
     if (!open || !importacionId) return;
@@ -83,14 +86,17 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
       if (res.status === 'error') {
         setError(res.msg);
         setArticulos([]);
+        setOcProductos([]);
       } else {
         const lista = res.detalles?.articulos || [];
+        setOcProductos(res.detalles?.ocProductos || []);
         setArticulos(
           lista.map((a) => ({
             nombreOrig: a.nombre || '',
             colorOrig: a.color || '',
             nombre: a.nombre || '',
             codigo: a.codigo || '',
+            descripcion: '',
             // El color del packing list es el CÓDIGO del proveedor (D1000, 58L):
             // no sirve para la etiqueta. Se deja el campo vacío para que el
             // usuario elija el color legible del catálogo Distefano.
@@ -206,6 +212,7 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
                 {[
                   ['nombre', 'Nombre'],
                   ['codigo', 'Código de tela'],
+                  ['descripcion', 'Descripción'],
                   ['color', 'Color'],
                   ['composicion', 'Composición'],
                 ].map(([key, label]) => (
@@ -226,7 +233,19 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
               </div>
 
               {articulos.map((a, idx) => (
-                <ArticuloRow key={`${a.nombreOrig}|${a.colorOrig}`} articulo={a} onChange={(cambios) => actualizarArticulo(idx, cambios)} />
+                <ArticuloRow
+                  key={`${a.nombreOrig}|${a.colorOrig}`}
+                  articulo={a}
+                  onChange={(cambios) => actualizarArticulo(idx, cambios)}
+                  ocProductos={ocProductos}
+                  // Códigos ya elegidos en OTRAS filas: desaparecen de las
+                  // sugerencias de esta (string estable para el useEffect).
+                  codigosUsados={articulos
+                    .filter((_, i) => i !== idx)
+                    .map((x) => String(x.codigo || '').trim().toLowerCase())
+                    .filter(Boolean)
+                    .join('\n')}
+                />
               ))}
             </div>
           )}
@@ -264,7 +283,7 @@ export default function ArticulosEditor({ open, importacionId, expedienteName, o
 // rollos (más frecuentes primero). Los desplegables son propios (no <datalist>
 // nativo, que se ve negro y sin estilo): si no hay match, el usuario escribe
 // libremente y eso es lo que se guarda — Odoo es solo la sugerencia.
-function ArticuloRow({ articulo: a, onChange }) {
+function ArticuloRow({ articulo: a, onChange, ocProductos = [], codigosUsados = '' }) {
   const [productos, setProductos] = useState([]);
   const [colores, setColores] = useState([]);
   const prodTimer = useRef(null);
@@ -273,6 +292,32 @@ function ArticuloRow({ articulo: a, onChange }) {
   useEffect(() => {
     clearTimeout(prodTimer.current);
     const q = a.codigo.trim();
+
+    // 1) Con OC: sugerir SOLO los productos de la orden de compra que aún no
+    //    fueron elegidos en otra fila (si la OC trae 10 códigos y ya se usó 1,
+    //    quedan 9). Se filtra en cliente; sin query se muestran todos los
+    //    disponibles al enfocar el campo.
+    if (ocProductos.length) {
+      const usados = new Set(codigosUsados.split('\n').filter(Boolean));
+      const ql = q.toLowerCase();
+      const disponibles = ocProductos.filter(
+        (p) => !usados.has(String(p.codigo || p.nombre || '').trim().toLowerCase()),
+      );
+      const filtrados = ql
+        ? disponibles.filter(
+            (p) =>
+              String(p.codigo || '').toLowerCase().includes(ql) ||
+              String(p.nombreCompleto || p.nombre || '').toLowerCase().includes(ql),
+          )
+        : disponibles;
+      if (filtrados.length || !ql) {
+        setProductos(filtrados);
+        return undefined;
+      }
+      // sin match en la OC → cae a la búsqueda libre de abajo
+    }
+
+    // 2) Sin OC (o sin match): búsqueda libre en el catálogo Telas.
     if (q.length < MIN_CHARS_PRODUCTO) {
       setProductos([]);
       return undefined;
@@ -283,7 +328,7 @@ function ArticuloRow({ articulo: a, onChange }) {
     }, DEBOUNCE_MS);
     return () => clearTimeout(prodTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [a.codigo]);
+  }, [a.codigo, ocProductos, codigosUsados]);
 
   useEffect(() => {
     clearTimeout(colorTimer.current);
@@ -303,6 +348,7 @@ function ArticuloRow({ articulo: a, onChange }) {
     onChange({
       codigo: p.codigo || p.nombre,
       nombre: p.nombre || '',
+      descripcion: p.nombreCompleto || '', // descripción completa del producto de Odoo
       composicion: p.composicion || '',
       color: p.color || '',
     });
@@ -326,6 +372,15 @@ function ArticuloRow({ articulo: a, onChange }) {
           </>
         )}
       />
+
+      {/* Descripción completa del producto elegido (informativa, no se imprime
+          en la etiqueta): ayuda a verificar que el código es el correcto. */}
+      <div className="min-h-[48px] flex items-center">
+        <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1 sm:hidden mr-2">Descripción</span>
+        <p className="text-xs leading-snug text-slate-600 line-clamp-3" title={a.descripcion || ''}>
+          {a.descripcion || <span className="text-slate-400">— elige un código —</span>}
+        </p>
+      </div>
 
       <Autocompletar
         label="Color"
