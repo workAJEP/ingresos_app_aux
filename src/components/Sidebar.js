@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   ClipboardList,
   Truck,
+  Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -31,6 +32,7 @@ const ITEMS = [
   { href: '/reporte', match: (p) => p === '/reporte', icon: ClipboardList, label: 'Reporte' },
   { href: '/manifiesto', match: (p) => p === '/manifiesto', icon: FileText, label: 'Manifiesto' },
   { href: '/manifiesto-envio', match: (p) => p === '/manifiesto-envio', icon: Truck, label: 'Manifiesto de envío' },
+  { href: '/configuracion', match: (p) => p === '/configuracion', icon: Settings, label: 'Configuración' },
 ];
 
 function SidebarInner({ collapsed, onToggle }) {

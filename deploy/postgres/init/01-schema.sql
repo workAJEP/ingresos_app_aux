@@ -21,3 +21,11 @@ CREATE INDEX IF NOT EXISTS print_jobs_pendientes_idx
 
 -- Para la limpieza por antiguedad.
 CREATE INDEX IF NOT EXISTS print_jobs_creado_en_idx ON print_jobs (creado_en);
+
+-- Configuracion de la app (apartado Configuracion): pares clave/valor.
+-- p.ej. api_key_externa = key generada por otra app para la conexion.
+CREATE TABLE IF NOT EXISTS app_config (
+  clave          TEXT        PRIMARY KEY,
+  valor          TEXT        NOT NULL,
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
