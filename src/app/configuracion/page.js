@@ -4,7 +4,7 @@
 // administración de la conexión por API key (la key la genera OTRA app y aquí
 // se pega y se guarda; nunca se vuelve a mostrar completa).
 import { useCallback, useEffect, useState } from 'react';
-import { Settings, Printer, KeyRound, RefreshCw, Eye, EyeOff, Save } from 'lucide-react';
+import { Settings, Printer, KeyRound, RefreshCw, Eye, EyeOff, Save, PlugZap } from 'lucide-react';
 import Spinner from '@/components/ui/Spinner';
 import ErrorBanner from '@/components/ui/ErrorBanner';
 import { apiFetch } from '@/components/useApi';
@@ -15,8 +15,10 @@ export default function ConfiguracionPage() {
   const [error, setError] = useState('');
 
   const [apiKey, setApiKey] = useState('');
+  const [apiUrl, setApiUrl] = useState('');
   const [verKey, setVerKey] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [probando, setProbando] = useState(false);
   const [msgKey, setMsgKey] = useState(null); // { status, msg }
 
   const cargar = useCallback(async () => {
@@ -24,7 +26,10 @@ export default function ConfiguracionPage() {
     setError('');
     const res = await apiFetch('/api/config');
     if (res.status === 'error') setError(res.msg);
-    else setData(res.detalles);
+    else {
+      setData(res.detalles);
+      setApiUrl(res.detalles?.conexion?.apiUrl || '');
+    }
     setCargando(false);
   }, []);
 
@@ -32,19 +37,29 @@ export default function ConfiguracionPage() {
     cargar();
   }, [cargar]);
 
-  const guardarKey = async (e) => {
+  const guardarConexion = async (e) => {
     e.preventDefault();
-    if (!apiKey.trim()) return;
+    if (!apiKey.trim() && !apiUrl.trim()) return;
     setGuardando(true);
     setMsgKey(null);
-    const res = await apiFetch('/api/config', { method: 'POST', body: { apiKey: apiKey.trim() } });
+    const body = { apiUrl: apiUrl.trim() };
+    if (apiKey.trim()) body.apiKey = apiKey.trim();
+    const res = await apiFetch('/api/config', { method: 'POST', body });
     setGuardando(false);
     setMsgKey({ status: res.status, msg: res.msg });
-    if (res.status === 'success') {
+    if (res.status === 'success' || res.status === 'warning') {
       setApiKey('');
       setVerKey(false);
       cargar();
     }
+  };
+
+  const probarConexion = async () => {
+    setProbando(true);
+    setMsgKey(null);
+    const res = await apiFetch('/api/config', { method: 'POST', body: { accion: 'probar' } });
+    setProbando(false);
+    setMsgKey({ status: res.status, msg: res.msg });
   };
 
   const imp = data?.impresion;
@@ -112,14 +127,16 @@ export default function ConfiguracionPage() {
               Administrar conexión
             </h2>
             <p className="text-sm text-slate-500">
-              Pega la <strong>API key</strong> generada por la otra app para habilitar la conexión. Se guarda en el
-              servidor y nunca se vuelve a mostrar completa.
+              Conexión con la <strong>app de Despachos</strong>: coloca la <strong>URL</strong> de la app y pega la{' '}
+              <strong>API key</strong> que genera su panel (formato <code className="font-mono">dsp_…</code>). La key se
+              guarda en el servidor y nunca se vuelve a mostrar completa.
             </p>
 
             {cx?.apiKey ? (
               <div className="flex flex-wrap items-center gap-2 text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                 <span className="font-semibold text-blue-900">Key actual:</span>
                 <span className="font-mono">{cx.apiKey}</span>
+                {cx.apiUrl && <span className="text-xs text-slate-500">· {cx.apiUrl}</span>}
                 {cx.actualizado && (
                   <span className="text-xs text-slate-500">
                     · actualizada {new Date(cx.actualizado).toLocaleString('es-GT')}
@@ -140,33 +157,59 @@ export default function ConfiguracionPage() {
                 variable exista también en Preview/Development de Vercel o en .env.local).
               </p>
             ) : (
-              <form onSubmit={guardarKey} className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
+              <form onSubmit={guardarConexion} className="space-y-2">
+                <label className="block">
+                  <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1">URL de la app (ruta)</span>
                   <input
-                    type={verKey ? 'text' : 'password'}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="Pega aquí la API key de la otra app…"
+                    type="url"
+                    value={apiUrl}
+                    onChange={(e) => setApiUrl(e.target.value)}
+                    placeholder="https://despachos-app.vercel.app"
                     autoComplete="off"
-                    className="w-full min-h-[48px] pl-3 pr-11 py-2 text-sm font-mono border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                    className="w-full min-h-[48px] px-3 py-2 text-sm font-mono border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
                   />
+                </label>
+                <label className="block">
+                  <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1">API key</span>
+                  <div className="relative">
+                    <input
+                      type={verKey ? 'text' : 'password'}
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="dsp_… (déjalo vacío para conservar la key actual)"
+                      autoComplete="off"
+                      className="w-full min-h-[48px] pl-3 pr-11 py-2 text-sm font-mono border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setVerKey((v) => !v)}
+                      aria-label={verKey ? 'Ocultar key' : 'Mostrar key'}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded text-slate-500 hover:bg-slate-100 transition-colors"
+                    >
+                      {verKey ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
+                    </button>
+                  </div>
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={guardando || (!apiKey.trim() && !apiUrl.trim())}
+                    className="flex items-center justify-center gap-1.5 min-h-[48px] px-5 bg-blue-800 hover:bg-blue-900 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {guardando ? <Spinner size="sm" className="text-white" /> : <Save className="w-4 h-4" aria-hidden="true" />}
+                    Guardar
+                  </button>
                   <button
                     type="button"
-                    onClick={() => setVerKey((v) => !v)}
-                    aria-label={verKey ? 'Ocultar key' : 'Mostrar key'}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded text-slate-500 hover:bg-slate-100 transition-colors"
+                    onClick={probarConexion}
+                    disabled={probando || guardando}
+                    title="Llama a /api/ext/ping de la app de Despachos con la key guardada"
+                    className="flex items-center justify-center gap-1.5 min-h-[48px] px-5 bg-white border border-slate-200 text-blue-800 hover:bg-slate-50 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
                   >
-                    {verKey ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
+                    {probando ? <Spinner size="sm" /> : <PlugZap className="w-4 h-4" aria-hidden="true" />}
+                    Probar conexión
                   </button>
                 </div>
-                <button
-                  type="submit"
-                  disabled={guardando || !apiKey.trim()}
-                  className="flex items-center justify-center gap-1.5 min-h-[48px] px-5 bg-blue-800 hover:bg-blue-900 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {guardando ? <Spinner size="sm" className="text-white" /> : <Save className="w-4 h-4" aria-hidden="true" />}
-                  Guardar
-                </button>
               </form>
             )}
 
@@ -175,6 +218,8 @@ export default function ConfiguracionPage() {
                 className={`text-sm font-semibold border rounded-lg px-3 py-2 ${
                   msgKey.status === 'success'
                     ? 'bg-green-50 border-green-200 text-green-800'
+                    : msgKey.status === 'warning'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
                     : 'bg-red-50 border-red-200 text-red-800'
                 }`}
               >
