@@ -132,9 +132,12 @@ export default function ConfiguracionPage() {
               </p>
             )}
 
-            {!cx?.disponible ? (
+            {/* Solo se declara "falta DATABASE_URL" con datos CARGADOS: si el GET
+                falló (data null) el aviso correcto es el banner de error de arriba. */}
+            {data && !cx?.disponible ? (
               <p className="text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                No hay dónde guardar la configuración: falta DATABASE_URL (Postgres) en el servidor.
+                No hay dónde guardar la configuración: falta DATABASE_URL (Postgres) en este entorno (revisa que la
+                variable exista también en Preview/Development de Vercel o en .env.local).
               </p>
             ) : (
               <form onSubmit={guardarKey} className="flex flex-col sm:flex-row gap-2">

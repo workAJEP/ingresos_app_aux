@@ -1,10 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Boxes, PlusCircle, RefreshCw, Tags, PackageOpen } from 'lucide-react';
-import RollosAdmin from '@/components/RollosAdmin';
+import Link from 'next/link';
+import { Boxes, PlusCircle, RefreshCw, FolderCog } from 'lucide-react';
 import UploadContenedor from '@/components/UploadContenedor';
-import PrintStickerButton from '@/components/PrintStickerButton';
 import ArticulosEditor from '@/components/ArticulosEditor';
 import Spinner from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
@@ -19,7 +18,6 @@ export default function ContenedoresPage() {
   const [error, setError] = useState('');
   const [uploadAbierto, setUploadAbierto] = useState(false);
   const [articulosEditor, setArticulosEditor] = useState(null); // { importacionId, expedienteName } | null
-  const [rollosAdmin, setRollosAdmin] = useState(null); // { importacionId, expedienteName } | null
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -91,7 +89,7 @@ export default function ContenedoresPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {importaciones.map((imp) => (
-            <ExpedienteCard key={imp.id} imp={imp} onEditarArticulos={setArticulosEditor} onAdminRollos={setRollosAdmin} />
+            <ExpedienteCard key={imp.id} imp={imp} />
           ))}
         </div>
       )}
@@ -111,19 +109,11 @@ export default function ContenedoresPage() {
         onClose={() => setArticulosEditor(null)}
         onSaved={cargar}
       />
-
-      <RollosAdmin
-        open={!!rollosAdmin}
-        importacionId={rollosAdmin?.importacionId}
-        expedienteName={rollosAdmin?.expedienteName}
-        onClose={() => setRollosAdmin(null)}
-        onChanged={cargar}
-      />
     </div>
   );
 }
 
-function ExpedienteCard({ imp, onEditarArticulos, onAdminRollos }) {
+function ExpedienteCard({ imp }) {
   const total = imp.rollosTotal || 0;
   const segmentos = [
     { valor: imp.rollosRecibidos, color: 'bg-green-600' },
@@ -160,32 +150,15 @@ function ExpedienteCard({ imp, onEditarArticulos, onAdminRollos }) {
       </p>
 
       {total > 0 && (
-        <div className="flex flex-col sm:flex-row gap-2">
-          <PrintStickerButton
-            chooser
-            importacionId={imp.id}
-            count={total - (imp.rollosPendientes || 0)}
-            className="flex-1"
-          />
-          <button
-            type="button"
-            onClick={() => onEditarArticulos?.({ importacionId: imp.id, expedienteName: imp.name })}
-            className="flex items-center justify-center gap-1.5 min-h-[52px] w-full sm:w-auto px-4 bg-white border border-slate-200 text-blue-800 hover:bg-slate-50 text-sm font-semibold rounded-lg transition-colors"
-          >
-            <Tags className="w-4 h-4" aria-hidden="true" />
-            Datos de etiqueta
-          </button>
-          <button
-            type="button"
-            onClick={() => onAdminRollos?.({ importacionId: imp.id, expedienteName: imp.name })}
-            title="Ver y eliminar rollos del expediente (todos o seleccionados)"
-            className="flex items-center justify-center gap-1.5 min-h-[52px] w-full sm:w-auto px-4 bg-white border border-slate-200 text-blue-800 hover:bg-slate-50 text-sm font-semibold rounded-lg transition-colors"
-          >
-            <PackageOpen className="w-4 h-4" aria-hidden="true" />
-            Administrar rollos
-          </button>
-        </div>
+        <Link
+          href={`/contenedores/${imp.id}`}
+          className="flex items-center justify-center gap-1.5 min-h-[52px] w-full px-4 bg-white border border-slate-200 text-blue-800 hover:bg-slate-50 text-sm font-semibold rounded-lg transition-colors"
+        >
+          <FolderCog className="w-4 h-4" aria-hidden="true" />
+          Administrar expediente
+        </Link>
       )}
+
     </div>
   );
 }
