@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { X, Trash2, Search, PackageOpen, RefreshCw } from 'lucide-react';
+import { X, Trash2, Search, PackageOpen, RefreshCw, RotateCcw } from 'lucide-react';
 import { apiFetch } from '@/components/useApi';
 import Spinner from '@/components/ui/Spinner';
 import ErrorBanner from '@/components/ui/ErrorBanner';
@@ -17,6 +17,7 @@ import Badge from '@/components/ui/Badge';
 export default function RollosAdmin({ open, embedded = false, importacionId, expedienteName, onClose, onChanged }) {
   const [cargando, setCargando] = useState(true);
   const [eliminando, setEliminando] = useState(false);
+  const [revirtiendo, setRevirtiendo] = useState(false);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [rollos, setRollos] = useState([]);
@@ -105,6 +106,34 @@ export default function RollosAdmin({ open, embedded = false, importacionId, exp
     await cargar();
   };
 
+  // Devuelve los rollos marcados a 'pendiente' (se escanearon por error). No
+  // los borra: el rollo sigue en el expediente, listo para escanear de nuevo.
+  const revertir = async () => {
+    const ids = [...seleccion];
+    if (!ids.length) return;
+    const ok = window.confirm(
+      `¿Revertir ${ids.length} rollo(s) a Pendiente?
+
+Se borra el ingreso registrado (fechas y operador) y podrán escanearse de nuevo.`,
+    );
+    if (!ok) return;
+    setRevirtiendo(true);
+    setError('');
+    setMsg('');
+    const res = await apiFetch('/api/odoo/rollos', {
+      method: 'PATCH',
+      body: { importacionId, ids },
+    });
+    setRevirtiendo(false);
+    if (res.status === 'error') {
+      setError(res.msg);
+      return;
+    }
+    setMsg(res.msg);
+    onChanged?.();
+    await cargar();
+  };
+
   const cerrar = () => {
     setError('');
     setMsg('');
@@ -123,7 +152,7 @@ export default function RollosAdmin({ open, embedded = false, importacionId, exp
           <button
             type="button"
             onClick={cargar}
-            disabled={cargando || eliminando}
+            disabled={cargando || eliminando || revirtiendo}
             aria-label="Actualizar"
             className="p-1.5 rounded text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-50"
           >
@@ -224,8 +253,18 @@ export default function RollosAdmin({ open, embedded = false, importacionId, exp
         <div className="flex gap-2">
           <button
             type="button"
+            onClick={revertir}
+            disabled={revirtiendo || eliminando || cargando || seleccion.size === 0}
+            title="Devuelve los rollos marcados al estado Pendiente (se podrán escanear de nuevo)"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-blue-800 border border-slate-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
+          >
+            {revirtiendo ? <Spinner size="sm" /> : <RotateCcw className="w-4 h-4" aria-hidden="true" />}
+            Revertir a pendiente ({seleccion.size})
+          </button>
+          <button
+            type="button"
             onClick={() => eliminar(true)}
-            disabled={eliminando || cargando || rollos.length === 0}
+            disabled={eliminando || revirtiendo || cargando || rollos.length === 0}
             className="px-4 py-2 text-sm font-semibold text-red-700 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
           >
             Eliminar todos
@@ -233,7 +272,7 @@ export default function RollosAdmin({ open, embedded = false, importacionId, exp
           <button
             type="button"
             onClick={() => eliminar(false)}
-            disabled={eliminando || cargando || seleccion.size === 0}
+            disabled={eliminando || revirtiendo || cargando || seleccion.size === 0}
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-red-700 hover:bg-red-800 rounded-lg transition-colors disabled:opacity-50"
           >
             {eliminando ? <Spinner size="sm" className="text-white" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}

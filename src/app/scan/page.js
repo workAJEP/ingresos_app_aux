@@ -62,6 +62,10 @@ function ScanContent() {
   const [codigo, setCodigo] = useState('');
   const [procesando, setProcesando] = useState(false);
   const [resultado, setResultado] = useState(null);
+  // Ultimo codigo escaneado (ya normalizado). Sirve para reimprimir el sticker
+  // aunque el ingreso haya sido RECHAZADO por "ya fue registrado": el rollo
+  // existe y esta verificado, solo se volvio a pasar por el lector.
+  const [ultimoCodigo, setUltimoCodigo] = useState('');
   const [errorLocal, setErrorLocal] = useState('');
   const [contador, setContador] = useState(0);
   const [pila, setPila] = useState([]);
@@ -77,6 +81,7 @@ function ScanContent() {
   useEffect(() => {
     setContador(0);
     setResultado(null);
+    setUltimoCodigo('');
     setPila([]);
     setHistorial([]);
   }, [fase]);
@@ -99,6 +104,7 @@ function ScanContent() {
       // Código YA FILTRADO por la app (Santista: sin los 2 dígitos de control
       // finales; demás proveedores: completo) — ver lib/barcode.js.
       const codigoNormalizado = norm.codigo;
+      setUltimoCodigo(codigoNormalizado);
       let res = await apiFetch('/api/odoo/scan', {
         method: 'POST',
         body: { barcode: codigoNormalizado, fase, operador, source },
@@ -161,6 +167,11 @@ function ScanContent() {
     },
     [procesando, fase, operador, modo, cfg.estadoDestino]
   );
+
+  // Rechazo por rollo ya ingresado: el sticker igual se puede (re)imprimir.
+  const yaRegistrado = /ya fue registrado/i.test(resultado?.msg || '');
+  const codigoImprimible =
+    resultado?.status === 'success' ? resultado?.detalles?.codigo || ultimoCodigo : yaRegistrado ? ultimoCodigo : '';
 
   const deshacer = useCallback(async () => {
     const [tope, ...resto] = pila;
@@ -351,8 +362,11 @@ function ScanContent() {
               </div>
             )}
 
-            {fase === 'ingreso' && resultado?.status === 'success' && resultado?.detalles?.codigo && (
-              <PrintStickerButton barcodes={[resultado.detalles.codigo]} />
+            {fase === 'ingreso' && codigoImprimible && (
+              <PrintStickerButton
+                barcodes={[codigoImprimible]}
+                label={yaRegistrado ? 'Reimprimir sticker' : 'Imprimir sticker'}
+              />
             )}
 
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
