@@ -119,6 +119,21 @@ function ScanContent() {
         } else {
           res = { ...res, status: 'warning', msg: `${res.msg} · Ingresado, pero NO se trasladó: ${res2.msg}` };
         }
+
+        // Integración con DESPACHOS: crea (o reusa) la carga Z.14 → Xenacluster
+        // (rollos) enlazada al expediente, para que acepte los QR de los rollos.
+        // Usa la API key guardada en Configuración; si falla, el escaneo ya
+        // quedó hecho y solo se avisa.
+        const resCarga = await apiFetch('/api/despachos/carga', {
+          method: 'POST',
+          body: { barcode: codigoNormalizado },
+        });
+        if (resCarga.status === 'success') {
+          res = { ...res, msg: `${res.msg} · ${resCarga.msg}` };
+        } else if (resCarga.status !== 'info') {
+          // 'info' = conexión sin configurar: no ensuciar cada escaneo con eso.
+          res = { ...res, status: res.status === 'success' ? 'warning' : res.status, msg: `${res.msg} · ${resCarga.msg}` };
+        }
       }
 
       setProcesando(false);
