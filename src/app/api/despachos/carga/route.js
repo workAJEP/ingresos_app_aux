@@ -28,6 +28,10 @@ export async function POST(req) {
   }
   const barcode = String(body.barcode || '').trim().toUpperCase();
   if (!barcode) return badRequest('barcode es requerido.');
+  // Reparto en varias cargas: `nueva` fuerza abrir otra; `maxRollos` corta la
+  // carga al llegar al tope (Despachos abre la siguiente solo).
+  const nueva = body.nueva === true;
+  const maxRollos = Math.max(0, Number(body.maxRollos) || 0);
 
   try {
     if (!configDisponible()) {
@@ -54,21 +58,28 @@ export async function POST(req) {
       return respond({ status: 'warning', msg: `No se encontró el expediente del rollo ${barcode}.`, detalles: null });
     }
 
-    // Crear/reusar la carga en Despachos (idempotente por expediente).
+    // Crear/reusar la carga en Despachos Y asignarle el rollo (crea su bulto).
     let res;
     try {
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 12000);
+      const t = setTimeout(() => ctrl.abort(), 15000);
       res = await fetch(`${url.valor.replace(/\/+$/, '')}/api/ext/cargas`, {
         method: 'POST',
         headers: { 'X-API-Key': key.valor, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ importacion_id: impId, salida: SALIDA, destino: DESTINO }),
+        body: JSON.stringify({
+          importacion_id: impId,
+          codigo: barcode,
+          salida: SALIDA,
+          destino: DESTINO,
+          nueva,
+          max_rollos: maxRollos || undefined,
+        }),
         cache: 'no-store',
         signal: ctrl.signal,
       });
       clearTimeout(t);
     } catch (e) {
-      return respond({ status: 'warning', msg: 'Despachos no respondió: la carga NO se creó (el ingreso sí quedó).', detalles: null });
+      return respond({ status: 'warning', msg: 'Despachos no respondió: el rollo NO quedó en carga (el ingreso sí).', detalles: null });
     }
 
     let data = null;
@@ -88,12 +99,33 @@ export async function POST(req) {
       });
     }
 
+    const partes = [
+      data.reutilizada
+        ? `Carga ${data.name} (abierta)`
+        : `Carga ${data.name} CREADA (${SALIDA} → ${DESTINO})`,
+    ];
+    if (data.rollo) {
+      partes.push(
+        data.nuevo
+          ? `rollo asignado${data.bulto?.name ? ` como bulto ${data.bulto.name}` : ''}`
+          : 'el rollo ya estaba en esta carga',
+      );
+    }
+    if (data.rollos_en_carga != null) {
+      partes.push(`${data.rollos_en_carga}${maxRollos ? `/${maxRollos}` : ''} rollos en la carga`);
+    }
     return respond({
       status: 'success',
-      msg: data.reutilizada
-        ? `Carga ${data.name} (ya abierta) del expediente ${data.importacion?.name || impId}.`
-        : `Carga ${data.name} creada en Despachos (${SALIDA} → ${DESTINO}) para ${data.importacion?.name || impId}.`,
-      detalles: { id: data.id, name: data.name, reutilizada: !!data.reutilizada, importacion: data.importacion },
+      msg: `${partes.join(' · ')} — ${data.importacion?.name || impId}.`,
+      detalles: {
+        id: data.id,
+        name: data.name,
+        reutilizada: !!data.reutilizada,
+        importacion: data.importacion,
+        rollo: data.rollo,
+        bulto: data.bulto,
+        rollosEnCarga: data.rollos_en_carga ?? null,
+      },
     });
   } catch (err) {
     return fail(err);

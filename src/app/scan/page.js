@@ -72,8 +72,12 @@ function ScanContent() {
   const [historial, setHistorial] = useState([]);
   const [historialAbierto, setHistorialAbierto] = useState(true);
   // Modo del ingreso: 'bodega' = solo ingresar a Z14; 'trasladar' = ingresar y
-  // en el MISMO escaneo cargarlo al piloto (bodega -> tránsito).
+  // en el MISMO escaneo cargarlo al piloto (bodega -> tránsito) + carga en Despachos.
   const [modo, setModo] = useState('bodega');
+  // Reparto en cargas de Despachos: tope de rollos por carga (vacío = sin tope)
+  // y bandera "el próximo escaneo abre una carga nueva".
+  const [maxRollos, setMaxRollos] = useState('');
+  const [nuevaCarga, setNuevaCarga] = useState(false);
   const [checklistAbierto, setChecklistAbierto] = useState(false);
   const inputRef = useRef(null);
   const resultRef = useRef(null);
@@ -132,10 +136,15 @@ function ScanContent() {
         // quedó hecho y solo se avisa.
         const resCarga = await apiFetch('/api/despachos/carga', {
           method: 'POST',
-          body: { barcode: codigoNormalizado },
+          body: {
+            barcode: codigoNormalizado,
+            nueva: nuevaCarga,
+            maxRollos: Number(maxRollos) || 0,
+          },
         });
         if (resCarga.status === 'success') {
           res = { ...res, msg: `${res.msg} · ${resCarga.msg}` };
+          setNuevaCarga(false); // la bandera era para ESTE escaneo
         } else if (resCarga.status !== 'info') {
           // 'info' = conexión sin configurar: no ensuciar cada escaneo con eso.
           res = { ...res, status: res.status === 'success' ? 'warning' : res.status, msg: `${res.msg} · ${resCarga.msg}` };
@@ -165,7 +174,7 @@ function ScanContent() {
         setPila((prev) => [{ codigo: entrada.codigo, estadoEsperado: estadoUndo }, ...prev].slice(0, MAX_UNDO));
       }
     },
-    [procesando, fase, operador, modo, cfg.estadoDestino]
+    [procesando, fase, operador, modo, nuevaCarga, maxRollos, cfg.estadoDestino]
   );
 
   // Rechazo por rollo ya ingresado: el sticker igual se puede (re)imprimir.
@@ -267,8 +276,47 @@ function ScanContent() {
                 <p className="text-xs text-slate-500 mt-2">
                   {modo === 'bodega'
                     ? 'El rollo queda en Bodega Z14.'
-                    : 'El rollo ingresa a Z14 y en el mismo escaneo queda cargado al piloto (en tránsito).'}
+                    : 'El rollo ingresa a Z14, queda cargado al piloto (en tránsito) y se asigna como bulto a la carga Z.14 → Xenacluster (rollos) en Despachos.'}
                 </p>
+
+                {modo === 'trasladar' && (
+                  <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <label className="flex-1">
+                        <span className="block text-[11px] font-semibold uppercase text-blue-700 mb-1">
+                          Rollos por carga (opcional)
+                        </span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={maxRollos}
+                          onChange={(e) => setMaxRollos(e.target.value)}
+                          placeholder="Sin tope"
+                          className="w-full min-h-[40px] px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setNuevaCarga((v) => !v)}
+                        title="El próximo escaneo abre otra carga (para repartir en 2+ cargas)"
+                        className={`self-end min-h-[40px] px-3 rounded-lg text-sm font-semibold border transition-colors ${
+                          nuevaCarga
+                            ? 'bg-amber-600 border-amber-600 text-white'
+                            : 'bg-white border-slate-200 text-blue-800 hover:bg-slate-50'
+                        }`}
+                      >
+                        {nuevaCarga ? 'Nueva carga ✓' : 'Nueva carga'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {nuevaCarga
+                        ? 'El PRÓXIMO escaneo abre una carga nueva (los siguientes siguen en ella).'
+                        : maxRollos
+                        ? `Al llegar a ${maxRollos} rollos, la siguiente carga se abre sola.`
+                        : 'Todos los rollos del expediente van a la misma carga abierta.'}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
