@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Boxes, PlusCircle, RefreshCw, Tags, Trash2 } from 'lucide-react';
+import { Boxes, PlusCircle, RefreshCw, Tags, PackageOpen } from 'lucide-react';
+import RollosAdmin from '@/components/RollosAdmin';
 import UploadContenedor from '@/components/UploadContenedor';
 import PrintStickerButton from '@/components/PrintStickerButton';
 import ArticulosEditor from '@/components/ArticulosEditor';
@@ -18,6 +19,7 @@ export default function ContenedoresPage() {
   const [error, setError] = useState('');
   const [uploadAbierto, setUploadAbierto] = useState(false);
   const [articulosEditor, setArticulosEditor] = useState(null); // { importacionId, expedienteName } | null
+  const [rollosAdmin, setRollosAdmin] = useState(null); // { importacionId, expedienteName } | null
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -89,7 +91,7 @@ export default function ContenedoresPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {importaciones.map((imp) => (
-            <ExpedienteCard key={imp.id} imp={imp} onEditarArticulos={setArticulosEditor} onDeleted={cargar} />
+            <ExpedienteCard key={imp.id} imp={imp} onEditarArticulos={setArticulosEditor} onAdminRollos={setRollosAdmin} />
           ))}
         </div>
       )}
@@ -109,31 +111,20 @@ export default function ContenedoresPage() {
         onClose={() => setArticulosEditor(null)}
         onSaved={cargar}
       />
+
+      <RollosAdmin
+        open={!!rollosAdmin}
+        importacionId={rollosAdmin?.importacionId}
+        expedienteName={rollosAdmin?.expedienteName}
+        onClose={() => setRollosAdmin(null)}
+        onChanged={cargar}
+      />
     </div>
   );
 }
 
-function ExpedienteCard({ imp, onEditarArticulos, onDeleted }) {
-  const [eliminando, setEliminando] = useState(false);
-  const [msgEliminar, setMsgEliminar] = useState('');
+function ExpedienteCard({ imp, onEditarArticulos, onAdminRollos }) {
   const total = imp.rollosTotal || 0;
-
-  // Elimina TODOS los rollos del expediente (vuelve al estado inicial, antes
-  // de la subida del packing list). Doble confirmación: es irreversible.
-  const eliminarRollos = async () => {
-    const ok = window.confirm(
-      `¿Eliminar los ${total} rollo(s) cargados a ${imp.name}?\n\n` +
-        'El expediente vuelve al estado inicial (sin rollos, sin escaneos, sin datos de etiqueta). ' +
-        'Esta acción NO se puede deshacer.',
-    );
-    if (!ok) return;
-    setEliminando(true);
-    setMsgEliminar('');
-    const res = await apiFetch(`/api/odoo/rollos?importacionId=${imp.id}`, { method: 'DELETE' });
-    setEliminando(false);
-    setMsgEliminar(res.msg || '');
-    if (res.status === 'success') onDeleted?.();
-  };
   const segmentos = [
     { valor: imp.rollosRecibidos, color: 'bg-green-600' },
     { valor: imp.rollosTransito, color: 'bg-amber-500' },
@@ -186,17 +177,15 @@ function ExpedienteCard({ imp, onEditarArticulos, onDeleted }) {
           </button>
           <button
             type="button"
-            onClick={eliminarRollos}
-            disabled={eliminando}
-            title="Eliminar todos los rollos del expediente (vuelve al estado inicial de subida)"
-            className="flex items-center justify-center gap-1.5 min-h-[52px] w-full sm:w-auto px-4 bg-white border border-red-200 text-red-700 hover:bg-red-50 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+            onClick={() => onAdminRollos?.({ importacionId: imp.id, expedienteName: imp.name })}
+            title="Ver y eliminar rollos del expediente (todos o seleccionados)"
+            className="flex items-center justify-center gap-1.5 min-h-[52px] w-full sm:w-auto px-4 bg-white border border-slate-200 text-blue-800 hover:bg-slate-50 text-sm font-semibold rounded-lg transition-colors"
           >
-            <Trash2 className="w-4 h-4" aria-hidden="true" />
-            {eliminando ? 'Eliminando…' : 'Eliminar rollos'}
+            <PackageOpen className="w-4 h-4" aria-hidden="true" />
+            Administrar rollos
           </button>
         </div>
       )}
-      {msgEliminar && <p className="text-xs text-slate-600">{msgEliminar}</p>}
     </div>
   );
 }
