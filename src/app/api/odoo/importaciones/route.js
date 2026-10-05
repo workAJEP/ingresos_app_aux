@@ -11,16 +11,23 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get('q') || '').trim();
 
-    const domain = [['state', 'not in', ['cerrado', 'cancelado']]];
+    // ?todos=1 (página Contenedores): incluye cerrados y cancelados; el
+    // picker de escaneo sigue viendo solo los abiertos.
+    const todos = searchParams.get('todos') === '1';
+    const domain = todos ? [] : [['state', 'not in', ['cerrado', 'cancelado']]];
     if (q) {
       domain.push('|', '|', ['name', 'ilike', q], ['descripcion', 'ilike', q], ['contenedor', 'ilike', q]);
     }
 
+    // Sin búsqueda: TODOS los abiertos (limit 0 = sin límite en Odoo y en el
+    // fake). Con tope de 20 los más viejos quedaban fuera de la lista y su
+    // página /contenedores/[id] no los encontraba (ej. IMP-2026-0016, con 26
+    // abiertos más nuevos). Con búsqueda basta un tope para el picker.
     const importaciones = await odooSearchRead(
       'distefano.importacion',
       domain,
       ['name', 'descripcion', 'partner_origen_id', 'state', 'contenedor'],
-      20,
+      q ? 50 : 0,
       0,
       'id desc',
     );
