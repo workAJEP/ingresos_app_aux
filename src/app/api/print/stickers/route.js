@@ -6,6 +6,8 @@
 //   rolloIds:  [<int>],      // ids de distefano.importacion.rollo, y/o
 //   barcodes:  ["T2741672"], // códigos de rollo, o
 //   importacionId: <int>,    // MASIVA: todos los rollos del expediente
+//   prueba: true,            // con importacionId: PRUEBA de diseño — 1 sticker
+//                            // por código de tela (incluye no verificados)
 //   departamento: <string>,  // REQUERIDO: lo selecciona el usuario
 // }
 // proveedor se resuelve del expediente (partner_origen_id) de cada rollo.
@@ -22,6 +24,22 @@ export const dynamic = 'force-dynamic';
 
 const MAX_ROLLOS = 500;
 
+// Impresión de prueba: 1 rollo por código de tela (cod_dist; si no tiene,
+// por artículo nombre+color). De cada grupo se toma el rollo con los textos
+// MÁS LARGOS — el caso que más arriesga desbordar el diseño del sticker.
+function unoPorCodigo(rollos) {
+  const largo = (r) =>
+    ['nombre', 'color', 'composicion', 'cod_dist', 'barcode'].reduce((n, k) => n + String(r[k] || '').length, 0);
+  const porCodigo = new Map();
+  for (const r of rollos) {
+    const cod = String(r.cod_dist || '').trim();
+    const clave = cod ? `c:${cod}` : `a:${r.nombre || ''}|${r.color || ''}`;
+    const actual = porCodigo.get(clave);
+    if (!actual || largo(r) > largo(actual)) porCodigo.set(clave, r);
+  }
+  return [...porCodigo.values()].sort((a, b) => a.id - b.id);
+}
+
 export async function POST(req) {
   const session = await getIronSession(cookies(), sessionOptions);
 
@@ -37,6 +55,8 @@ export async function POST(req) {
     ? body.barcodes.map((b) => String(b || '').toUpperCase().replace(/[\r\n\t\s]+/g, '')).filter(Boolean)
     : [];
   const importacionId = Number(body.importacionId) || 0;
+  const prueba = body.prueba === true;
+  if (prueba && !importacionId) return badRequest('La impresión de prueba requiere importacionId.');
 
   // Departamento: columna del sticker, la elige el usuario al imprimir.
   const departamento = String(body.departamento || '').trim();
@@ -53,7 +73,9 @@ export async function POST(req) {
     // Rollos desde Odoo: por expediente completo (masiva) o por id/barcode.
     // SOLO rollos VERIFICADOS (ya escaneados: estado != pendiente) — no se
     // imprimen stickers de rollos que aún no pasaron por el ingreso físico.
-    const domain = [['estado', '!=', 'pendiente']];
+    // PRUEBA: todos los rollos del expediente (aunque no estén verificados),
+    // luego se deja 1 por código para revisar que el diseño no se desborde.
+    const domain = prueba ? [] : [['estado', '!=', 'pendiente']];
     if (importacionId) {
       domain.push(['importacion_id', '=', importacionId]);
     } else if (rolloIds.length && barcodes.length) {
@@ -63,16 +85,21 @@ export async function POST(req) {
     } else {
       domain.push(['barcode', 'in', barcodes]);
     }
-    const rollos = await odooSearchRead(
+    let rollos = await odooSearchRead(
       'distefano.importacion.rollo',
       domain,
       ['id', 'barcode', 'nombre', 'color', 'composicion', 'pieza', 'cod_dist', 'peso_neto', 'yardas', 'importacion_id'],
-      MAX_ROLLOS,
+      prueba ? 5000 : MAX_ROLLOS,
+      0,
+      'id asc',
     );
+    if (prueba) rollos = unoPorCodigo(rollos);
     if (!rollos.length) {
       return respond({
         status: 'warning',
-        msg: 'No hay rollos VERIFICADOS para imprimir (solo se imprimen los ya escaneados en el ingreso).',
+        msg: prueba
+          ? 'El expediente no tiene rollos para la impresión de prueba.'
+          : 'No hay rollos VERIFICADOS para imprimir (solo se imprimen los ya escaneados en el ingreso).',
         detalles: null,
       });
     }
@@ -152,13 +179,16 @@ export async function POST(req) {
 
     await enqueueJob({
       rows,
-      meta: { by: session.login || null, departamento, rollos: rows.length },
+      meta: { by: session.login || null, departamento, rollos: rows.length, prueba },
       ts: Date.now(),
     });
 
     return respond({
       status: sinCodigo ? 'warning' : 'success',
-      msg: sinCodigo
+      msg: prueba
+        ? `PRUEBA: ${rows.length} etiqueta(s), 1 por código [${departamento}].` +
+          (sinCodigo ? ` OJO: ${sinCodigo} sin Código de tela (complétalo en "Datos de etiqueta").` : '')
+        : sinCodigo
         ? `Enviado a imprimir: ${rows.length} etiqueta(s) [${departamento}]. OJO: ${sinCodigo} sin Código de tela — complétalo en "Datos de etiqueta" y reimprime.`
         : `Enviado a imprimir: ${rows.length} etiqueta(s) [${departamento}].`,
       detalles: { stickers: rows.length, departamento, noEncontrados, sinCodigo },

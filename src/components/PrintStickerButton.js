@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Printer, Loader2, Check, X, Pencil, Layers, Barcode } from 'lucide-react';
+import { Printer, Loader2, Check, X, Pencil, Layers, Barcode, FlaskConical } from 'lucide-react';
 import { apiFetch } from './useApi';
 import { beep } from '@/lib/beep';
 import { normalizarBarcode } from '@/lib/barcode';
@@ -82,6 +82,10 @@ export default function PrintStickerButton({
     setConfirmando(false);
     enviar({ importacionId });
   };
+
+  // Prueba de diseño: 1 sticker por código de tela del expediente (aunque los
+  // rollos no estén verificados) para revisar que nada se desborde.
+  const imprimirPrueba = () => enviar({ importacionId, prueba: true });
 
   const imprimirIndividual = () => {
     const norm = normalizarBarcode(codigoInd);
@@ -238,6 +242,21 @@ export default function PrintStickerButton({
               ? `⚠️ Confirmar impresión masiva (${count} etiquetas)`
               : `Masivo: ${count} rollo(s) verificados`}
           </button>
+
+          <div className="border-t border-dashed border-slate-200 pt-2">
+            <button
+              type="button"
+              onClick={imprimirPrueba}
+              disabled={enviando}
+              className="w-full flex items-center justify-center gap-1.5 min-h-[48px] px-4 bg-white border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+            >
+              {enviando ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <FlaskConical className="w-4 h-4" aria-hidden="true" />}
+              Impresión de prueba: 1 sticker por código
+            </button>
+            <p className="text-xs text-slate-400 mt-1 text-center">
+              Revisa el diseño (que nada se desborde) antes de imprimir todo. Usa el rollo con los textos más largos de cada código.
+            </p>
+          </div>
 
           {msg && (
           <p
