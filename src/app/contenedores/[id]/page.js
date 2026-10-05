@@ -27,7 +27,7 @@ export default function ExpedientePage() {
   const cargar = useCallback(async () => {
     setLoading(true);
     setError('');
-    const res = await apiFetch('/api/odoo/importaciones');
+    const res = await apiFetch('/api/odoo/importaciones?todos=1');
     if (res.status === 'error') {
       setError(res.msg);
     } else {
